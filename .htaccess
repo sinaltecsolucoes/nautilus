@@ -1,0 +1,21 @@
+# .htaccess
+# Local: C:\xampp\htdocs\nautilus\
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # 1. Define a base de reescrita como a pasta do projeto
+    RewriteBase /nautilus/
+    
+    # 2. Redireciona o acesso à raiz do projeto para a pasta /public
+    RewriteRule ^$ public/ [L]
+    
+    # 3. Ignora arquivos e diretórios reais
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    
+    # 4. Redireciona TUDO para o index.php da pasta public
+    # NOTE: Usamos o caminho limpo ($1) como o valor de 'route'
+    # Esta linha deve ser ÚNICA e COMPLETA
+    RewriteRule ^(.*)$ public/index.php?route=$1 [L,QSA]
+</IfModule>

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Teste de API: Login JWT</title>
+</head>
+
+<body>
+    <h1>Teste de Login da API (Motorista/Técnico)</h1>
+
+    <p>Rota: http://localhost/nautilus/api/auth/login</p>
+
+    <form action="http://localhost/nautilus/api/auth/login" method="POST">
+        <h2>Credenciais:</h2>
+
+        <label for="email">Email (Login):</label>
+        <input type="text" id="email" name="email" value="joao@nautilus.com" required><br><br>
+
+        <label for="senha">Senha:</label>
+        <input type="password" id="senha" name="senha" value="123456" required><br><br>
+
+        <button type="submit">Fazer Login (POST)</button>
+    </form>
+
+    <hr>
+
+    <h2>Teste de Rota Protegida: /api/entrega/minhas-entregas</h2>
+    <p>Para testar esta rota, você precisará COPIAR o token JWT da resposta do formulário acima e usá-lo em uma
+        ferramenta como o Insomnia.</p>
+</body>
+
+</html> 

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Teste de API Entidades</title>
+</head>
+<body>
+    <h1>Teste de Busca de CNPJ/CEP (POST)</h1>
+    
+    <form action="http://localhost/nautilus/entidades/api-busca" method="POST">
+        <label for="termo">CNPJ/CEP:</label>
+        <input type="text" id="termo" name="termo" value="00000000000191" required><br><br>
+        
+        <label for="tipo">Tipo de Busca:</label>
+        <select id="tipo" name="tipo" required>
+            <option value="cnpj">CNPJ</option>
+            <option value="cep">CEP</option>
+        </select><br><br>
+
+        <button type="submit">Buscar Dados (POST)</button>
+    </form>
+</body>
+</html>

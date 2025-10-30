@@ -1,0 +1,217 @@
+/**
+ * ARQUIVO DE ESTILOS PRINCIPAL
+ * Local: assets/css/style.css
+ * Descrição: Estilos globais para o NAUTILUS ERP.
+ */
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f7f6;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+}
+
+.login-container {
+    background-color: #ffffff;
+    padding: 40px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    width: 350px;
+    text-align: center;
+}
+
+.login-container h2 {
+    margin-bottom: 30px;
+    color: #1a4d2e;
+    /* Cor do Nautilus */
+}
+
+.form-group {
+    margin-bottom: 20px;
+    text-align: left;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+    color: #333;
+}
+
+.form-group input[type="email"],
+.form-group input[type="password"] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+.error-message {
+    background-color: #fdd;
+    color: #cc0000;
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    border: 1px solid #f99;
+}
+
+.btn-login {
+    width: 100%;
+    background-color: #1a4d2e;
+    color: white;
+    padding: 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+
+.btn-login:hover {
+    background-color: #2b7042;
+}
+
+/* Estilos específicos para o Dashboard (pode ir para style.css futuramente) */
+.dashboard-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.welcome-banner {
+    background-color: #e6f7ff;
+    border-left: 5px solid #1a4d2e;
+    padding: 20px;
+    margin-bottom: 30px;
+    border-radius: 4px;
+}
+
+.widgets-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+}
+
+.widget {
+    background-color: #ffffff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.widget h4 {
+    color: #1a4d2e;
+    margin-top: 0;
+}
+
+.widget .metric {
+    font-size: 2em;
+    font-weight: bold;
+    color: #007bff;
+    margin: 5px 0;
+}
+
+
+/* Estilos específicos para o permissoes */
+.permissoes-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.permissoes-table th,
+.permissoes-table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: center;
+}
+
+.permissoes-table thead {
+    background-color: #f2f2f2;
+}
+
+.module-row {
+    transition: background-color 0.2s;
+}
+
+.module-row:hover {
+    background-color: #f9f9f9;
+}
+
+.module-name-cell {
+    text-align: left;
+    font-weight: bold;
+    background-color: #eaf1f7;
+}
+
+.cargo-header {
+    background-color: #1a4d2e;
+    color: white;
+    border: 1px solid #1a4d2e !important;
+}
+
+.action-header {
+    font-size: 0.9em;
+    padding: 5px;
+    background-color: #cce0d2;
+}
+
+/* Estilos do Switch (Toggle Button) */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 34px;
+    height: 20px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 12px;
+    width: 12px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+}
+
+input:checked+.slider {
+    background-color: #1a4d2e;
+}
+
+input:focus+.slider {
+    box-shadow: 0 0 1px #1a4d2e;
+}
+
+input:checked+.slider:before {
+    transform: translateX(14px);
+}
+
+.slider.round {
+    border-radius: 20px;
+}
+
+.slider.round:before {
+    border-radius: 50%;
+}

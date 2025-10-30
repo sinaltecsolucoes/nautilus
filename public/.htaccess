@@ -1,0 +1,21 @@
+# public/.htaccess
+# Local: C:\xampp\htdocs\nautilus\public\
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # Define a base de reescrita como a pasta 'public'
+    RewriteBase /nautilus/public/
+
+    # 1. ROTA DA API: Qualquer requisição que comece com /api/ (ou /api)
+    RewriteRule ^api/(.*)$ api.php?route=$1 [L,QSA]
+    RewriteRule ^api$ api.php?route=auth/login [L,QSA] # Ponto de entrada
+
+    # Ignora arquivos e diretórios reais (CSS, JS, Imagens)
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+
+    # Redireciona o caminho restante (a rota limpa) para o index.php
+    # Ele usa a parte da URL após /nautilus/public/
+    RewriteRule ^(.*)$ index.php [QSA,L]
+</IfModule>
