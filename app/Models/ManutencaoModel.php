@@ -101,5 +101,22 @@ class ManutencaoModel
         ];
     }
 
-    // Futuramente: find, update, delete, getCustosPorVeiculo
+    /**
+     * Busca todos os dados de manutenção para a geração do PDF.
+     * @return array Dados completos.
+     */
+    public function findAllRelatorioData(): array
+    {
+        $sql = "SELECT 
+                    m.data_servico, m.servico_peca, m.valor, 
+                    v.placa, 
+                    f.nome_fantasia AS fornecedor_nome
+                FROM MANUTENCOES m 
+                JOIN VEICULOS v ON m.veiculo_id = v.id
+                JOIN ENTIDADES f ON m.fornecedor_id = f.id
+                ORDER BY m.data_servico DESC";
+
+        $stmt = $this->pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 }

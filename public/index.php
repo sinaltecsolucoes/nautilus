@@ -11,11 +11,9 @@ define('ROOT_PATH', dirname(__DIR__));
 
 // 1. Configurações Globais
 session_start(); // Inicia a sessão para controle de login/usuário
-// Usa ROOT_PATH
 require_once ROOT_PATH . '/config/config.php';
 
-// 2. Inclusão dos Controllers 
-// Usa ROOT_PATH
+// 2. Inclusão dos Controllers
 require_once ROOT_PATH . '/app/Controllers/AuthController.php';
 require_once ROOT_PATH . '/app/Controllers/DashboardController.php';
 require_once ROOT_PATH . '/app/Controllers/PermissaoController.php';
@@ -25,34 +23,32 @@ require_once ROOT_PATH . '/app/Controllers/VeiculoController.php';
 require_once ROOT_PATH . '/app/Controllers/FuncionarioController.php';
 
 // 3. Definição do Roteamento
-// Captura a rota da URL (agora vindo do .htaccess)
 $route = $_GET['route'] ?? 'home';
 
-// 1. Limpa barras e remove extensões .php (se existirem)
+// Limpa barras e remove extensões .php
 $route = trim($route, '/');
 $route = str_replace('.php', '', $route);
 
-// 2. Trata o prefixo 'public/' que o Apache pode adicionar
+// Trata o prefixo 'public/' que o Apache pode adicionar
 if (strpos($route, 'public/') === 0) {
-    $route = substr($route, 7); // Remove "public/" (7 caracteres)
+    $route = substr($route, 7);
 }
 
-// 3. O NOME FINAL DA ROTA É A STRING COMPLETA (ex: 'entidades/api-busca')
 if (empty($route)) {
     $route = 'home';
 }
 
 // Mapeamento das rotas para [Controller, método]
 $routes = [
-    // Rotas de Autenticação (Acesso Público)
-    'login'     => ['AuthController', 'processLogin'],
+    // Rotas de Autenticação
+    'login'     => ['AuthController', 'handleLogin'],   // GET: exibe tela | POST: processa login
     'logout'    => ['AuthController', 'logout'],
 
-    // Rotas da Interface (Acesso Público ou Restrito)
+    // Rotas da Interface
     'home'      => ['DashboardController', 'showDashboard'],
     'dashboard' => ['DashboardController', 'showDashboard'],
 
-    // Rotas de Permissões (Acesso Restrito ao Administrador)
+    // Rotas de Permissões
     'permissoes'        => ['PermissaoController', 'index'],
     'permissoes-update' => ['PermissaoController', 'update'],
 
@@ -61,13 +57,11 @@ $routes = [
     'fornecedores'      => ['EntidadeController', 'index'],
     'transportadoras'   => ['EntidadeController', 'index'],
 
-    // Rotas de Manutenção 
-    'manutencao'            => ['ManutencaoController', 'index'],
-    'manutencao/listar'     => ['ManutencaoController', 'listarManutencoes'],
-
-    // Rotas de Manutenção (AÇÕES)
-    'manutencao/salvar'         => ['ManutencaoController', 'salvarManutencao'],
-    'manutencao/veiculos-options' => ['ManutencaoController', 'getVeiculosOptions'],
+    // Rotas de Manutenção
+    'manutencao'                    => ['ManutencaoController', 'index'],
+    'manutencao/listar'             => ['ManutencaoController', 'listarManutencoes'],
+    'manutencao/salvar'             => ['ManutencaoController', 'salvarManutencao'],
+    'manutencao/veiculos-options'   => ['ManutencaoController', 'getVeiculosOptions'],
     'manutencao/fornecedores-options' => ['ManutencaoController', 'getFornecedoresOptions'],
 
     // Rotas de Veículos
@@ -78,15 +72,20 @@ $routes = [
     'veiculos/deletar'  => ['VeiculoController', 'deleteVeiculo'],
 
     // Rotas de Integração (AJAX)
-    'entidades/api-busca' => ['EntidadeController', 'buscarApiDados'],
-    'entidades/clientes-options' => ['EntidadeController', 'getClientesOptions'],
+    'entidades/api-busca'           => ['EntidadeController', 'buscarApiDados'],
+    'entidades/clientes-options'    => ['EntidadeController', 'getClientesOptions'],
 
-    // Rotas de Ações CRUD para o Módulo de Entidades
-    'entidades/listar' => ['EntidadeController', 'listarEntidades'],    // Para DataTables
-    'entidades/get'    => ['EntidadeController', 'getEntidade'],       // Para Edição
-    'entidades/salvar' => ['EntidadeController', 'salvarEntidade'],    // Criação/Atualização
+    // Rotas de Ações CRUD para Entidades
+    'entidades/listar' => ['EntidadeController', 'listarEntidades'],
+    'entidades/get'    => ['EntidadeController', 'getEntidade'],
+    'entidades/salvar' => ['EntidadeController', 'salvarEntidade'],
+    'entidades/deletar' => ['EntidadeController', 'deleteEntidade'],
 
-    // Rotas de Funcionários (Usuários)
+    // Rotas de Ações CRUD para Endereços Adicionais
+    'entidades/enderecos/listar' => ['EntidadeController', 'listarEnderecosAdicionais'], 
+    'entidades/enderecos/salvar' => ['EntidadeController', 'salvarEnderecoAdicional'], 
+
+    // Rotas de Funcionários
     'usuarios'          => ['FuncionarioController', 'index'],
     'usuarios/listar'   => ['FuncionarioController', 'listarFuncionarios'],
     'usuarios/get'      => ['FuncionarioController', 'getFuncionario'],
@@ -98,58 +97,56 @@ $routes = [
     'pedidos/listar'    => ['PedidoController', 'listarPedidos'],
     'pedidos/salvar'    => ['PedidoController', 'salvarPedido'],
 
-    // Rotas de Logística/Expedição 
-    'logistica'             => ['ExpedicaoController', 'index'],
-    'expedicao/listar'      => ['ExpedicaoController', 'listarExpedicoes'],
-    'expedicao/salvar'      => ['ExpedicaoController', 'salvarExpedicao'],
+    // Rotas de Logística/Expedição
+    'logistica'                 => ['ExpedicaoController', 'index'],
+    'expedicao/listar'          => ['ExpedicaoController', 'listarExpedicoes'],
+    'expedicao/salvar'          => ['ExpedicaoController', 'salvarExpedicao'],
     'expedicao/pessoal-options' => ['ExpedicaoController', 'getPessoalOptions'],
-    'expedicao/next-carga-number' => ['ExpedicaoController', 'getNextCargaNumber'], 
+    'expedicao/next-carga-number' => ['ExpedicaoController', 'getNextCargaNumber'],
+
+    // Rotas de Relatórios
+    'relatorios'                => ['RelatorioController', 'index'],
+    'relatorios/manutencao-pdf' => ['RelatorioController', 'gerarManutencaoPdf'],
 ];
 
-// 4. Lógica de Acesso (Verificação de Login)
-$is_public_route = in_array($route, ['login', 'logout', 'forgot_password', 'register']);
-$is_logged_in = $_SESSION['logged_in'] ?? false;
+// 4. Rotas públicas (não exigem login)
+$public_routes = ['login', 'logout', 'home'];
+$is_public_route = in_array($route, $public_routes);
+$is_logged_in = !empty($_SESSION['logged_in']);
 
+// CORREÇÃO: Evitar redirecionamento infinito
+
+// Se NÃO logado e rota protegida → vai para login
 if (!$is_logged_in && !$is_public_route) {
-    // Se não estiver logado E a rota não for pública, força o login
-    $controller = new AuthController();
-    $controller->showLogin();
+    header('Location: ' . BASE_URL . '/login');
     exit;
 }
 
-// Se a rota for 'login' e o usuário já estiver logado, redireciona para o dashboard
-if ($is_logged_in && $route === 'login') {
-    // Redireciona para a URL Amigável
+// Se JÁ logado e tenta acessar login ou home → vai para dashboard
+if ($is_logged_in && in_array($route, ['login', 'home'])) {
     header('Location: ' . BASE_URL . '/dashboard');
     exit;
 }
 
 // 5. Execução do Controller
 if (isset($routes[$route])) {
-    list($controllerName, $methodName) = $routes[$route];
+    [$controllerName, $methodName] = $routes[$route];
 
-    // Verifica se o Controller existe (AGORA DEVE FUNCIONAR DEVIDO AO ROOT_PATH)
     if (class_exists($controllerName)) {
         $controller = new $controllerName();
 
-        // Verifica se o método existe no Controller
         if (method_exists($controller, $methodName)) {
-            // Execução do método
-            if (($route === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') || $route === 'permissoes-update') {
-                $controller->$methodName();
-            } else {
-                $controller->$methodName();
-            }
+            // handleLogin decide GET ou POST
+            $controller->$methodName();
         } else {
             http_response_code(404);
-            echo "Erro 404: Método '{$methodName}' não encontrado no Controller '{$controllerName}'.";
+            echo "Erro 404: Método '{$methodName}' não encontrado em '{$controllerName}'.";
         }
     } else {
         http_response_code(404);
         echo "Erro 404: Controller '{$controllerName}' não encontrado.";
     }
 } else {
-    // Rota não mapeada (404)
     http_response_code(404);
-    echo "Erro 404: Rota não encontrada. Tente " . BASE_URL . "/login"; // URL Amigável no erro!
+    echo "Erro 404: Rota não encontrada. Acesse: " . BASE_URL . "/login";
 }

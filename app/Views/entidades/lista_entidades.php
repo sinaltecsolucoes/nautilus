@@ -52,20 +52,230 @@ $singular = ucfirst($pageType);
                     <input type="hidden" id="entidade-id" name="ent_codigo">
                     <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($data['csrf_token']); ?>">
 
-                    <p>Conteúdo do formulário de Entidades virá aqui (Dados Principais e Endereços Adicionais).</p>
+                    <ul class="nav nav-tabs" id="myTab" role="tablist">
+                        <li class="nav-item">
+                            <a class="nav-link active" id="dados-tab" data-bs-toggle="tab" href="#dados" role="tab" aria-controls="dados" aria-selected="true">Dados Principais</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link disabled" id="endereco-adicional-tab" data-bs-toggle="tab" href="#endereco-adicional-panel" role="tab" aria-controls="endereco-adicional-panel" aria-selected="false">Endereços Adicionais</a>
+                        </li>
+                    </ul>
 
-                    <div class="form-group">
-                        <label for="cnpj">CNPJ/CPF</label>
-                        <input type="text" class="form-control" id="cnpj" name="cnpj_cpf">
-                        <button type="button" id="btn-buscar-cnpj">Buscar CNPJ</button>
+                    <div class="tab-content" id="myTabContent">
+                        <div class="tab-pane fade show active" id="dados" role="tabpanel" aria-labelledby="dados-tab">
+                            <div class="row mt-3">
+                                <input type="hidden" name="tipo" id="ent_tipo" value="<?php echo ucfirst($pageType); ?>">
+
+                                <div class="col-md-6 mb-3">
+                                    <label for="tipo_pessoa" class="form-label">Tipo de Pessoa (*)</label>
+                                    <select class="form-select" id="tipo_pessoa" name="tipo_pessoa" required>
+                                        <option value="Juridica">Jurídica</option>
+                                        <option value="Fisica">Física</option>
+                                    </select>
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label for="situacao" class="form-label">Situação (*)</label>
+                                    <select class="form-select" id="situacao" name="situacao" required>
+                                        <option value="Ativo">Ativo</option>
+                                        <option value="Inativo">Inativo</option>
+                                    </select>
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label for="cnpj_cpf" class="form-label">CNPJ/CPF (*)</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="cnpj_cpf" name="cnpj_cpf" required>
+                                        <button class="btn btn-outline-secondary" type="button" id="btn-buscar-cnpj" title="Buscar dados da Receita Federal (CNPJ/CPF)">
+                                            <i class="fas fa-search"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label for="inscricao_estadual_rg" class="form-label">Inscrição Estadual/RG</label>
+                                    <input type="text" class="form-control" id="inscricao_estadual_rg" name="inscricao_estadual_rg">
+                                </div>
+
+                                <div class="col-12 mb-3">
+                                    <label for="razao_social" class="form-label">Razão Social / Nome Completo (*)</label>
+                                    <input type="text" class="form-control" id="razao_social" name="razao_social" required>
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label for="nome_fantasia" class="form-label">Nome Fantasia / Apelido</label>
+                                    <input type="text" class="form-control" id="nome_fantasia" name="nome_fantasia">
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label for="codigo_interno" class="form-label">Código Interno</label>
+                                    <input type="text" class="form-control" id="codigo_interno" name="codigo_interno">
+                                </div>
+                            </div>
+
+                            <hr>
+
+                            <h5 class="modal-title" id="modal-entidade-label">Endereço Principal</h5>
+
+                            <div class="row mt-3">
+                                <div class="col-md-4 mb-3">
+                                    <label for="end_cep" class="form-label">CEP</label>
+                                    <div class="input-group">
+                                        <input
+                                            type="text"
+                                            class="form-control"
+                                            id="end_cep"
+                                            name="end_cep"
+                                            maxlength="9"
+                                            disabled>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-8 mb-3">
+                                    <label for="end_logradouro" class="form-label">Logradouro</label>
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        id="end_logradouro"
+                                        name="end_logradouro"
+                                        disabled>
+                                </div>
+
+                                <div class="col-md-4 mb-3">
+                                    <label for="end_numero" class="form-label">Número (*)</label>
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        id="end_numero"
+                                        name="end_numero"
+                                        disabled>
+                                </div>
+
+                                <div class="col-md-8 mb-3">
+                                    <label for="end_complemento" class="form-label">Complemento</label>
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        id="end_complemento"
+                                        name="end_complemento"
+                                        disabled>
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label for="end_bairro" class="form-label">Bairro (*)</label>
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        id="end_bairro"
+                                        name="end_bairro"
+                                        disabled>
+                                </div>
+
+                                <div class="col-md-4 mb-3">
+                                    <label for="end_cidade" class="form-label">Cidade (*)</label>
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        id="end_cidade"
+                                        name="end_cidade"
+                                        disabled>
+                                </div>
+
+                                <div class="col-md-2 mb-3">
+                                    <label for="end_uf" class="form-label">UF (*)</label>
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        id="end_uf"
+                                        name="end_uf"
+                                        maxlength="2"
+                                        disabled>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade" id="endereco-adicional-panel" role="tabpanel" aria-labelledby="endereco-adicional-tab">
+                            <div class="row mt-3">
+                                <form id="form-endereco-adicional" class="row">
+                                    <input type="hidden" name="entidade_id" id="end_adic_entidade_id">
+
+                                    <div class="col-md-6 mb-3">
+                                        <label for="end_adic_tipo" class="form-label">Tipo de Endereço (*)</label>
+                                        <select class="form-select" id="end_adic_tipo" name="tipo_endereco" required>
+                                            <option value="Comercial">Comercial</option>
+                                            <option value="Entrega">Entrega</option>
+                                            <option value="Correspondencia">Correspondência</option>
+                                            <option value="Filial">Filial</option>
+                                            <option value="Cobranca">Cobrança</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="col-md-6 mb-3">
+                                        <label for="end_adic_cep" class="form-label">CEP (*)</label>
+                                        <div class="input-group">
+                                            <input type="text" class="form-control" id="end_adic_cep" name="cep" maxlength="9" required>
+                                            <button class="btn btn-outline-secondary" type="button" id="btn-buscar-cep-adic" title="Buscar CEP (ViaCEP)">
+                                                <i class="fas fa-search"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-8 mb-3">
+                                        <label for="end_adic_logradouro" class="form-label">Logradouro (*)</label>
+                                        <input type="text" class="form-control" id="end_adic_logradouro" name="logradouro" required>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label for="end_adic_numero" class="form-label">Número (*)</label>
+                                        <input type="text" class="form-control" id="end_adic_numero" name="numero" required>
+                                    </div>
+
+                                    <div class="col-md-6 mb-3">
+                                        <label for="end_adic_complemento" class="form-label">Complemento</label>
+                                        <input type="text" class="form-control" id="end_adic_complemento" name="complemento">
+                                    </div>
+
+                                    <div class="col-md-6 mb-3">
+                                        <label for="end_adic_bairro" class="form-label">Bairro (*)</label>
+                                        <input type="text" class="form-control" id="end_adic_bairro" name="bairro" required>
+                                    </div>
+
+                                    <div class="col-md-6 mb-3">
+                                        <label for="end_adic_cidade" class="form-label">Cidade (*)</label>
+                                        <input type="text" class="form-control" id="end_adic_cidade" name="cidade" required>
+                                    </div>
+                                    <div class="col-md-2 mb-3">
+                                        <label for="end_adic_uf" class="form-label">UF (*)</label>
+                                        <input type="text" class="form-control" id="end_adic_uf" name="uf" maxlength="2" required>
+                                    </div>
+
+                                    <div class="col-md-4 mb-3 text-end">
+                                        <label class="form-label d-block">&nbsp;</label>
+                                        <button type="submit" class="btn btn-success"><i class="fas fa-save"></i> Adicionar Endereço</button>
+                                    </div>
+                                </form>
+                            </div>
+
+                            <hr>
+
+                            <h5>Endereços Registrados</h5>
+                            <div class="table-responsive">
+                                <table class="table table-striped" id="tabela-enderecos-adicionais" width="100%" cellspacing="0">
+                                    <thead>
+                                        <tr>
+                                            <th>Tipo</th>
+                                            <th>Logradouro, Número</th>
+                                            <th>Bairro, Cidade/UF</th>
+                                            <th>Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+
                     </div>
-
-                    <div class="form-group">
-                        <label for="cep">CEP</label>
-                        <input type="text" class="form-control" id="cep" name="end_cep">
-                        <button type="button" id="btn-buscar-cep">Buscar CEP</button>
-                    </div>
-
                 </form>
             </div>
             <div class="modal-footer">

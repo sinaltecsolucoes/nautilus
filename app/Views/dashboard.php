@@ -1,45 +1,51 @@
 <?php
-
-/**
- * VIEW: Dashboard Principal
- * Local: app/Views/dashboard.php
- * Descrição: Exibe a área principal do sistema com informações resumidas.
- * Esta View é injetada no layout.php.
- * * Variáveis disponíveis: $data['welcome_message']
- */
-// Nota: Não colocamos aqui o <html>, <head>, <body>, etc., pois isso está no layout.php
+$data = $data ?? [];
+$welcome = $data['welcome_message'] ?? 'Bem-vindo(a), Admin Master (Administrador)!';
 ?>
-
-<div class="dashboard-content">
-
-    <div class="welcome-banner">
-        <h2><?php echo htmlspecialchars($data['welcome_message']); ?></h2>
-        <p>Esta é a visão geral do **NAUTILUS ERP**. Utilize a navegação para acessar os módulos de Logística, Vendas e Cadastros.</p>
-    </div>
-
-    <div class="widgets-grid">
-        <h3>📊 Resumo de Hoje</h3>
-        <div class="widget">
-            <h4>Pedidos para Entrega</h4>
-            <p class="metric">0</p>
-            <small>Pedidos confirmados para carregamento.</small>
-        </div>
-
-        <div class="widget">
-            <h4>Frota em Trânsito</h4>
-            <p class="metric">0/<?php // echo $data['total_frota']; 
-                                ?></p>
-            <small>Veículos alocados e em trânsito.</small>
-        </div>
-
-        <div class="widget">
-            <h4>Manutenções Pendentes</h4>
-            <p class="metric">0</p>
-            <small>Serviços corretivos ou preventivos.</small>
+<div class="row">
+    <div class="col-xl-12">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <i class="fas fa-tachometer-alt me-1"></i>
+                <?php echo htmlspecialchars($welcome); ?>
+            </div>
+            <div class="card-body">
+                <p>Esta é a visão geral do <strong>NAUTILUS ERP</strong>. Utilize a navegação para acessar os módulos.</p>
+            </div>
         </div>
     </div>
+</div>
 
-    <div style="margin-top: 30px; padding: 15px; background-color: #fffbe6; border: 1px solid #ffe082; border-radius: 4px;">
-        <p><strong>Atenção:</strong> Os módulos de Entidades, Vendas e Logística serão ativados nos próximos passos!</p>
+<div class="row">
+    <div class="col-xl-3 col-md-6">
+        <div class="card bg-warning text-white mb-4">
+            <div class="card-body">Pedidos para Entrega <span class="float-end">0</span></div>
+            <div class="card-footer d-flex align-items-center justify-content-between">
+                <a class="small text-white stretched-link" href="#">Ver Detalhes</a>
+                <div class="small text-white"><i class="fas fa-angle-right"></i></div>
+            </div>
+        </div>
     </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card bg-success text-white mb-4">
+            <div class="card-body">Frota em Trânsito <span class="float-end">0</span></div>
+            <div class="card-footer d-flex align-items-center justify-content-between">
+                <a class="small text-white stretched-link" href="#">Ver Frota</a>
+                <div class="small text-white"><i class="fas fa-angle-right"></i></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card bg-danger text-white mb-4">
+            <div class="card-body">Manutenções Pendentes <span class="float-end">0</span></div>
+            <div class="card-footer d-flex align-items-center justify-content-between">
+                <a class="small text-white stretched-link" href="#">Ver Pendências</a>
+                <div class="small text-white"><i class="fas fa-angle-right"></i></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="alert alert-info">
+    <strong>Atenção:</strong> Os módulos de Entidades, Vendas e Logística serão ativados nos próximos passos!
 </div>

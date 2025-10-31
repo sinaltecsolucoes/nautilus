@@ -4,10 +4,12 @@
  * CLASSE CONTROLLER: AuthController
  * Local: app/Controllers/AuthController.php
  * Descrição: Gerencia as rotas e a lógica de autenticação (Login, Logout)
- * e interage com o FuncionarioModel.
  */
 
-// Inclui o Model de Funcionário para acessar a lógica do DB
+if (!defined('ROOT_PATH')) {
+    define('ROOT_PATH', dirname(__DIR__, 2));
+}
+// Inclui o Model de Funcionário (necessário para a lógica de login)
 require_once ROOT_PATH . '/app/Models/FuncionarioModel.php';
 
 class AuthController
@@ -16,67 +18,81 @@ class AuthController
 
     public function __construct()
     {
-        // Inicializa o Model
         $this->funcionarioModel = new FuncionarioModel();
     }
 
-    /**
-     * Exibe a página de Login (View).
-     */
-    public function showLogin()
+    public function handleLogin()
     {
-        // Inclui a View de login para mostrar o formulário
-        include __DIR__ . '/../Views/login.php';
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $this->processLogin();
+        } else {
+            $this->showLogin();
+        }
     }
 
     /**
-     * Processa a submissão do formulário de Login.
+     * Exibe a página de Login (View Standalone - chamada via GET pelo Roteador).
+     */
+    public function showLogin()
+    {
+        // Garante a sessão para poder ler a mensagem de erro de $_SESSION['erro_login']
+        if (session_status() == PHP_SESSION_NONE) {
+            session_start();
+        }
+
+        $viewPath = ROOT_PATH . '/app/Views/login.php';
+
+        if (file_exists($viewPath)) {
+            // A View de Login é uma página HTML completa e lida com a exibição de erros
+            require_once $viewPath;
+        } else {
+            http_response_code(500);
+            echo "Erro: View de Login não encontrada.";
+        }
+    }
+
+    /**
+     * Processa a submissão do formulário de Login (chamada via POST pelo Roteador).
      */
     public function processLogin()
     {
-        // Verifica se os dados foram enviados via POST
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            // Se não for POST, redireciona ou mostra erro
-            $this->showLogin(['error' => 'Método de requisição inválido.']);
-            return;
+        if (session_status() == PHP_SESSION_NONE) {
+            session_start();
         }
+        unset($_SESSION['erro_login']);
 
-        // 1. Coleta e Limpeza dos Dados
-        $email = trim($_POST['email'] ?? '');
+        // 1. Captura os dados: 'login' (email) e 'senha' (nomes dos campos do login.php)
+        $email = trim($_POST['login'] ?? '');
         $senha_pura = $_POST['senha'] ?? '';
         $error = '';
 
         if (empty($email) || empty($senha_pura)) {
-            $error = 'Por favor, preencha o email e a senha.';
+            $error = 'Por favor, preencha o login e a senha.';
         }
 
         if (!empty($error)) {
-            $this->showLogin(['error' => $error]);
-            return;
+            $_SESSION['erro_login'] = $error;
+            header('Location: ' . BASE_URL . '/login');
+            exit;
         }
 
-        // 2. Busca o usuário no Model
+        // 2. Busca e Verifica a Senha (usando a lógica do seu projeto)
         $funcionario = $this->funcionarioModel->getFuncionarioByEmail($email);
 
-        // 3. Verifica a Senha (Segurança!)
         if ($funcionario && password_verify($senha_pura, $funcionario['senha_hash'])) {
-
-            // Autenticação BEM-SUCEDIDA!
-
-            // 4. Inicia a Sessão e Armazena Dados
-            session_start();
+            // SUCESSO
             $_SESSION['user_id'] = $funcionario['id'];
             $_SESSION['user_nome'] = $funcionario['nome_completo'];
             $_SESSION['user_cargo'] = $funcionario['tipo_cargo'];
             $_SESSION['logged_in'] = true;
 
-            // 5. Redireciona para o Dashboard principal
             header('Location: ' . BASE_URL . '/dashboard');
             exit;
         } else {
-            // Autenticação FALHOU!
-            $error = 'Email ou senha incorretos.';
-            $this->showLogin(['error' => $error]);
+            // FALHA
+            $_SESSION['erro_login'] = 'Login (Email) ou senha incorretos.';
+            header('Location: ' . BASE_URL . '/login');
+            exit;
         }
     }
 
@@ -85,11 +101,11 @@ class AuthController
      */
     public function logout()
     {
-        session_start();
-        session_unset();    // Remove todas as variáveis de sessão
-        session_destroy();  // Destrói a sessão
-
-        // Redireciona para a página de login
+        if (session_status() == PHP_SESSION_NONE) {
+            session_start();
+        }
+        session_unset();
+        session_destroy();
         header('Location: ' . BASE_URL . '/login');
         exit;
     }

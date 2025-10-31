@@ -38,27 +38,69 @@ class EntidadeService
     }
 
     /**
-     * Busca informações da Pessoa Jurídica a partir de uma API CNPJ.
-     * NOTA: A CNPJA (CNPJA_URL) geralmente requer uma chave de API para funcionar.
+     * Busca informações da Pessoa Jurídica em APIs externas (CNPJá com fallback para BrasilAPI).
      * @param string $cnpj O CNPJ a ser consultado (apenas números).
-     * @return array|false Dados da PJ (Razão Social, Nome Fantasia) ou false em caso de erro.
+     * @return array|false Dados da PJ (Razão Social, Endereço, etc.) ou false em caso de erro.
      */
     public static function buscarDadosPJPorCnpj($cnpj)
     {
-        // ESTE É UM EXEMPLO GENÉRICO. A API CNPJA requer autenticação.
-        // Adaptaremos para uma chamada real se for necessário, mas por agora, apenas o esqueleto.
+        $cnpjLimpo = preg_replace('/\D/', '', $cnpj);
+        if (strlen($cnpjLimpo) !== 14) {
+            return false;
+        }
 
-        // Exemplo: $url = CNPJA_URL . $cnpj . '?token=SUA_CHAVE';
+        // ----------------------------------------------------
+        // 1. TENTATIVA: CNPJá API (Principal)
+        // ----------------------------------------------------
+        $urlCnpja = "https://open.cnpja.com/office/{$cnpjLimpo}";
+        $dataCnpja = HttpService::get($urlCnpja);
 
-        // Para fins de demonstração, simulamos um resultado
-        if (strlen($cnpj) === 14) {
+        if ($dataCnpja && !isset($dataCnpja['status']) && isset($dataCnpja['taxId'])) {
+
+            $registrations = $dataCnpja['registrations'][0] ?? [];
+            $address = $dataCnpja['address'] ?? [];
+
             return [
-                'razao_social' => 'Laboratório Teste Ltda',
-                'nome_fantasia' => 'Lagosta Premium',
-                'inscricao_estadual' => '123.456.789.000',
-                'tipo_pessoa' => 'Juridica'
+                'razao_social'       => strtoupper($dataCnpja['company']['name'] ?? ''),
+                'nome_fantasia'      => strtoupper($dataCnpja['alias'] ?? ''),
+                'inscricao_estadual' => strtoupper($registrations['number'] ?? ''),
+                'tipo_pessoa'        => 'Juridica',
+
+                // Dados de Endereço
+                'cep'                => preg_replace('/\D/', '', $address['zip'] ?? ''),
+                'logradouro'         => strtoupper($address['street'] ?? ''),
+                'numero'             => strtoupper($address['number'] ?? ''), 
+                'bairro'             => strtoupper($address['district'] ?? ''),
+                'cidade'             => strtoupper($address['city'] ?? ''),
+                'uf'                 => strtoupper($address['state'] ?? '')
             ];
         }
+
+        // ----------------------------------------------------
+        // 2. FALLBACK: BrasilAPI
+        // ----------------------------------------------------
+        $urlBrasilApi = "https://brasilapi.com.br/api/cnpj/v1/{$cnpjLimpo}";
+        $dataBrasilApi = HttpService::get($urlBrasilApi);
+
+        if ($dataBrasilApi && !isset($dataBrasilApi['type'])) {
+            // Sucesso na BrasilAPI.
+
+            return [
+                'razao_social'       => strtoupper($dataBrasilApi['razao_social'] ?? ''),
+                'nome_fantasia'      => strtoupper($dataBrasilApi['nome_fantasia'] ?? ''),
+                'inscricao_estadual' => null, // BrasilAPI não fornece IE
+                'tipo_pessoa'        => 'Juridica',
+
+                // Dados de Endereço (A BrasilAPI NÃO fornece o número do imóvel)
+                'cep'                => preg_replace('/\D/', '', $dataBrasilApi['cep'] ?? ''),
+                'logradouro'         => strtoupper($dataBrasilApi['logradouro'] ?? ''),
+                'numero'             => null, // Deixamos NULO para esta API e focamos no preenchimento manual
+                'bairro'             => strtoupper($dataBrasilApi['bairro'] ?? ''),
+                'cidade'             => strtoupper($dataBrasilApi['municipio'] ?? ''),
+                'uf'                 => strtoupper($dataBrasilApi['uf'] ?? '')
+            ];
+        }
+        // Se ambas falharem
         return false;
     }
 }

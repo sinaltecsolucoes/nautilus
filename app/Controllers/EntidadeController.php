@@ -45,7 +45,8 @@ class EntidadeController
         $data = [
             'title' => ucfirst($pageType) . 's', // Título dinâmico
             'pageType' => $pageType,
-            'csrf_token' => $_SESSION['csrf_token'] ?? $this->generateCsrfToken() // Gera token
+            'csrf_token' => $_SESSION['csrf_token'] ?? $this->generateCsrfToken(), // Gera token
+            'pageScript' => 'entidades'
         ];
 
         // RENDERIZAÇÃO
@@ -252,6 +253,123 @@ class EntidadeController
         } catch (\Exception $e) {
             error_log("Erro em getClientesOptions: " . $e->getMessage());
             echo json_encode(['results' => [], 'error' => 'Erro ao buscar clientes.']);
+        }
+    }
+
+    /**
+     * Deleta uma entidade (POST).
+     */
+    public function deleteEntidade()
+    {
+        // 1. Verificação de Ação (DELETE)
+        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        $userId = $_SESSION['user_id'] ?? 0;
+        $id = filter_input(INPUT_POST, 'ent_codigo', FILTER_VALIDATE_INT);
+
+        // VERIFICAÇÃO DE PERMISSÃO (ACL/RBAC)
+        if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Deletar')) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Acesso negado para Deletar.']);
+            exit;
+        }
+
+        if (!$id) {
+            echo json_encode(['success' => false, 'message' => 'ID inválido para exclusão.']);
+            exit;
+        }
+
+        try {
+            // Chama o método delete do Model
+            if ($this->entidadeModel->delete($id, $userId)) {
+                echo json_encode(['success' => true, 'message' => 'Entidade excluída com sucesso!']);
+            } else {
+                // Caso não tenha dado erro, mas não excluiu (registro não encontrado, etc.)
+                echo json_encode(['success' => false, 'message' => 'Falha ao excluir. Entidade não encontrada ou erro interno.']);
+            }
+        } catch (\PDOException $e) {
+            // Tratamento para restrições de chave estrangeira (se a entidade for usada em PREVISOES_VENDAS, por exemplo)
+            if ($e->getCode() === '23000') {
+                $message = "Erro: Não é possível excluir esta entidade. Ela está vinculada a Previsões de Vendas ou outros registros (restrição 'RESTRICT').";
+            } else {
+                $message = "Erro no banco de dados. " . $e->getMessage();
+            }
+            echo json_encode(['success' => false, 'message' => $message]);
+        }
+    }
+
+    /**
+     * Rota AJAX para listar endereços adicionais (Usado pelo DataTables/Listagem).
+     */
+    public function listarEnderecosAdicionais()
+    {
+        // A ACL deve checar a permissão 'Ler' em 'Entidades'
+        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Ler')) {
+            http_response_code(403);
+            echo json_encode(["error" => "Acesso negado para listar endereços."]);
+            exit;
+        }
+
+        $entidadeId = filter_input(INPUT_POST, 'entidade_id', FILTER_VALIDATE_INT);
+        if (!$entidadeId) {
+            echo json_encode(["data" => []]); // Retorna vazio se não tiver ID
+            exit;
+        }
+
+        try {
+            $data = $this->entidadeModel->getEnderecosAdicionais($entidadeId);
+            // Formato DataTables simplificado, já que não usamos Server-Side aqui
+            echo json_encode(["data" => $data]);
+        } catch (\Exception $e) {
+            error_log("Erro em listarEnderecosAdicionais: " . $e->getMessage());
+            echo json_encode(["error" => "Erro ao processar dados."]);
+        }
+    }
+
+    /**
+     * Rota AJAX para salvar um novo endereço adicional (POST).
+     */
+    public function salvarEnderecoAdicional()
+    {
+        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        $entidadeId = filter_input(INPUT_POST, 'entidade_id', FILTER_VALIDATE_INT);
+
+        // A ACL deve checar a permissão 'Alterar' em 'Entidades' (pois está modificando um registro existente)
+        if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Alterar')) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Acesso negado para salvar endereço adicional.']);
+            exit;
+        }
+
+        if (!$entidadeId) {
+            echo json_encode(['success' => false, 'message' => 'Entidade ID inválida. Salve a entidade principal primeiro.']);
+            exit;
+        }
+
+        // Simulação de coleta e validação de dados
+        $dataEndereco = [
+            'tipo_endereco' => filter_input(INPUT_POST, 'tipo_endereco', FILTER_SANITIZE_SPECIAL_CHARS),
+            'cep'           => filter_input(INPUT_POST, 'cep', FILTER_SANITIZE_SPECIAL_CHARS),
+            'logradouro'    => filter_input(INPUT_POST, 'logradouro', FILTER_SANITIZE_SPECIAL_CHARS),
+            'numero'        => filter_input(INPUT_POST, 'numero', FILTER_SANITIZE_SPECIAL_CHARS),
+            'complemento'   => filter_input(INPUT_POST, 'complemento', FILTER_SANITIZE_SPECIAL_CHARS),
+            'bairro'        => filter_input(INPUT_POST, 'bairro', FILTER_SANITIZE_SPECIAL_CHARS),
+            'cidade'        => filter_input(INPUT_POST, 'cidade', FILTER_SANITIZE_SPECIAL_CHARS),
+            'uf'            => filter_input(INPUT_POST, 'uf', FILTER_SANITIZE_SPECIAL_CHARS),
+        ];
+
+        // Adicionar validação (ex: campos obrigatórios)
+
+        try {
+            $newId = $this->entidadeModel->createEnderecoAdicional($entidadeId, $dataEndereco);
+
+            if ($newId) {
+                echo json_encode(['success' => true, 'message' => 'Endereço adicional salvo com sucesso!', 'end_id' => $newId]);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Erro ao salvar o endereço no banco de dados.']);
+            }
+        } catch (\PDOException $e) {
+            echo json_encode(['success' => false, 'message' => 'Erro no banco de dados: ' . $e->getMessage()]);
         }
     }
 }

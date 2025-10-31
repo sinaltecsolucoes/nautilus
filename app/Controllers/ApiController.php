@@ -85,31 +85,104 @@ class ApiController
     // =================================================================
 
     /**
-     * Lista as entregas alocadas para o Motorista ou Técnico logado.
+     * Lista as entregas alocadas para o Motorista/Técnico logado.
+     * Rota: entrega/minhas-entregas (Requer JWT)
      */
     public function getMinhasEntregas()
     {
-        $userId = $_POST['user_id_api']; // Obtido do token via roteador
-
-        // Lógica de ACL de API: Um Técnico/Motorista só vê as entregas alocadas a ele.
-        // O ExpedicaoModel precisa de um método findEntregasByUserId (a ser criado).
+        $userId = $_POST['user_id_api'];
+        $cargo = $_POST['cargo_api'];    // Cargo obtido do token (Motorista, Tecnico)
 
         try {
-            // $entregas = $this->expedicaoModel->findEntregasByUserId($userId);
+            // O ExpedicaoModel precisa de um método findEntregasByUserId
+            $entregas = $this->expedicaoModel->findEntregasByUserId($userId, $cargo);
 
-            // SIMULAÇÃO:
-            echo json_encode([
-                'success' => true,
-                'data' => [
-                    ['id' => 101, 'cliente' => 'Fazenda Peixe Bom', 'status' => 'Em Carregamento'],
-                    ['id' => 102, 'cliente' => 'Fazenda Sol', 'status' => 'Em Trânsito']
-                ]
-            ]);
+            echo json_encode(['success' => true, 'data' => $entregas]);
         } catch (\Exception $e) {
             http_response_code(500);
-            echo json_encode(['success' => false, 'message' => 'Erro ao buscar entregas.']);
+            echo json_encode(['success' => false, 'message' => 'Erro ao buscar entregas: ' . $e->getMessage()]);
         }
     }
 
-    // ... Outros métodos de lançamento (registrarObservacao, registrarAbastecimento, etc.) virão aqui.
+    /**
+     * Motorista: Registra observações de ocorrência ou observações gerais.
+     * Rota: entrega/observacao (Requer JWT)
+     */
+    public function registrarObservacao()
+    {
+        $motoristaId = $_POST['user_id_api'];
+        $expedicaoId = filter_input(INPUT_POST, 'expedicao_id', FILTER_VALIDATE_INT);
+        $observacao = $_POST['observacao'] ?? '';
+        $tipo = $_POST['tipo'] ?? 'Observacao'; // Observacao, Incidente
+
+        if (!$expedicaoId || empty($observacao)) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'Dados incompletos.']);
+            return;
+        }
+
+        try {
+            // O ExpedicaoModel precisa de um método para salvar o log de Frota
+            $this->expedicaoModel->registrarLogFrota($expedicaoId, $motoristaId, $tipo, $observacao);
+            echo json_encode(['success' => true, 'message' => 'Observação registrada com sucesso.']);
+        } catch (\Exception $e) {
+            http_response_code(500);
+            echo json_encode(['success' => false, 'message' => 'Falha no registro: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Motorista: Registra abastecimento.
+     * Rota: entrega/abastecimento (Requer JWT)
+     */
+    public function registrarAbastecimento()
+    {
+        $motoristaId = $_POST['user_id_api'];
+        $expedicaoId = filter_input(INPUT_POST, 'expedicao_id', FILTER_VALIDATE_INT);
+        $valor = filter_input(INPUT_POST, 'valor', FILTER_VALIDATE_FLOAT);
+        $litros = filter_input(INPUT_POST, 'litros', FILTER_VALIDATE_FLOAT);
+
+        if (!$expedicaoId || $valor === false || $litros === false) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'Dados de abastecimento incompletos ou inválidos.']);
+            return;
+        }
+
+        try {
+            // O ExpedicaoModel precisa de um método para salvar o Abastecimento
+            $this->expedicaoModel->registrarAbastecimento($expedicaoId, $motoristaId, $valor, $litros);
+            echo json_encode(['success' => true, 'message' => 'Abastecimento registrado.']);
+        } catch (\Exception $e) {
+            http_response_code(500);
+            echo json_encode(['success' => false, 'message' => 'Falha no registro: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Técnico: Lançamento de Checklist, Observações e Mídias (Fotos/Vídeos).
+     * Rota: entrega/lancamento-tecnico (Nova Rota)
+     */
+    public function registrarLancamentoTecnico()
+    {
+        // Esta rota é um POST complexo que recebe dados e o arquivo de mídia ($_FILES)
+        $tecnicoId = $_POST['user_id_api'];
+        $expedicaoId = filter_input(INPUT_POST, 'expedicao_id', FILTER_VALIDATE_INT);
+
+        if (!$expedicaoId) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'ID da expedição é obrigatório.']);
+            return;
+        }
+
+        // Lógica de upload de arquivo: mover o $_FILES['midia'] para um diretório seguro (Ex: public/uploads/entregas/)
+        $caminhoMidia = null; // Supondo que a lógica de upload está implementada
+
+        try {
+            $this->expedicaoModel->registrarLogEntrega($_POST, $_FILES, $tecnicoId); // Model precisa de um método para isso
+            echo json_encode(['success' => true, 'message' => 'Lançamento e mídias registrados com sucesso.']);
+        } catch (\Exception $e) {
+            http_response_code(500);
+            echo json_encode(['success' => false, 'message' => 'Falha no registro: ' . $e->getMessage()]);
+        }
+    }
 }

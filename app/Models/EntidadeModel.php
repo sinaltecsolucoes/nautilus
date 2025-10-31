@@ -8,16 +8,19 @@
 
 // Inclui a classe de conexão PDO
 require_once __DIR__ . '/Database.php';
+require_once ROOT_PATH . '/app/Services/AuditLoggerService.php';
 
 class EntidadeModel
 {
     private $pdo;
     private $tableEntidade = 'ENTIDADES';
     private $tableEndereco = 'ENDERECOS';
+    private $logger;
 
     public function __construct()
     {
         $this->pdo = Database::getInstance()->getConnection();
+        $this->logger = new AuditLoggerService();
     }
 
     /**
@@ -49,6 +52,15 @@ class EntidadeModel
             ]);
 
             $entidadeId = $this->pdo->lastInsertId();
+
+            // LOG DE AUDITORIA: CREATE
+            $this->logger->log(
+                'CREATE',
+                $this->tableEntidade,
+                $entidadeId,
+                null, // Dados Antigos: null
+                $dataEntidade // Dados Novos: $dataEntidade
+            );
 
             // 2. INSERE OS ENDEREÇOS
             foreach ($dataEnderecos as $endereco) {
@@ -131,12 +143,16 @@ class EntidadeModel
      */
     public function update(int $id, $dataEntidade, $dataEnderecos, int $userId)
     {
-        // Implementação simplificada (transação e auditoria virão na próxima fase)
-        // Por agora, apenas o esqueleto para satisfazer o Controller.
-
         $this->pdo->beginTransaction();
 
+        // Inicializa $dadosAntigos como null.
+        $dadosAntigos = null;
+
         try {
+            // PASSO DE AUDITORIA 1: Busca o registro ANTES da alteração
+            // Se o find falhar, $dadosAntigos ainda será null, e o logger pode lidar com isso.
+            $dadosAntigos = $this->find($id);
+
             // 1. UPDATE na Entidade
             $sqlEntidade = "UPDATE {$this->tableEntidade} SET 
                 tipo = ?, tipo_pessoa = ?, razao_social = ?, nome_fantasia = ?, 
@@ -172,6 +188,15 @@ class EntidadeModel
                 $enderecoPrincipal['uf'],
                 $id
             ]);
+
+            // PASSO DE AUDITORIA 2: Log de UPDATE após o commit
+            $this->logger->log(
+                'UPDATE',
+                $this->tableEntidade,
+                $id,
+                $dadosAntigos, // Variável sempre terá um valor (null ou array)
+                $dataEntidade
+            );
 
             $this->pdo->commit();
             return true;
@@ -268,5 +293,96 @@ class EntidadeModel
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Deleta uma entidade (e seus endereços via ON DELETE CASCADE).
+     * @param int $id O ID da entidade a ser deletada.
+     * @param int $userId ID do usuário logado (para auditoria).
+     * @return bool Sucesso ou falha na transação.
+     */
+    public function delete(int $id, int $userId)
+    {
+        $this->pdo->beginTransaction();
+
+        try {
+            // PASSO DE AUDITORIA 1: Busca o registro ANTES da exclusão
+            $dadosAntigos = $this->find($id);
+
+            // 1. DELETA A ENTIDADE
+            $sqlEntidade = "DELETE FROM {$this->tableEntidade} WHERE id = ?";
+            $stmtEntidade = $this->pdo->prepare($sqlEntidade);
+            $stmtEntidade->execute([$id]);
+
+            // PASSO DE AUDITORIA 2: Log de DELETE
+            if ($stmtEntidade->rowCount() > 0) {
+                $this->logger->log(
+                    'DELETE',
+                    $this->tableEntidade,
+                    $id,
+                    $dadosAntigos, // O que foi deletado
+                    null // Dados Novos: null
+                );
+            }
+
+            $this->pdo->commit();
+            return true;
+        } catch (\PDOException $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Busca todos os endereços de uma entidade (exceto o Principal, que está no FIND).
+     * @param int $entidadeId O ID da entidade.
+     * @return array Lista de endereços.
+     */
+    public function getEnderecosAdicionais(int $entidadeId): array
+    {
+        $sql = "SELECT id, tipo_endereco, cep, logradouro, numero, complemento, bairro, cidade, uf 
+                FROM {$this->tableEndereco} 
+                WHERE entidade_id = :id AND tipo_endereco != 'Principal' 
+                ORDER BY tipo_endereco";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':id' => $entidadeId]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Cria um novo endereço para uma entidade existente (Usado para Endereços Adicionais).
+     * @param int $entidadeId O ID da entidade.
+     * @param array $endereco Dados do endereço.
+     * @return int|false O ID do novo endereço ou false.
+     */
+    public function createEnderecoAdicional(int $entidadeId, array $endereco)
+    {
+        try {
+            $sqlEndereco = "INSERT INTO {$this->tableEndereco} 
+                (entidade_id, tipo_endereco, cep, logradouro, numero, complemento, bairro, cidade, uf)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+            $stmtEndereco = $this->pdo->prepare($sqlEndereco);
+            $stmtEndereco->execute([
+                $entidadeId,
+                $endereco['tipo_endereco'], // NOVO CAMPO REQUERIDO
+                $endereco['cep'],
+                $endereco['logradouro'],
+                $endereco['numero'],
+                $endereco['complemento'] ?? null,
+                $endereco['bairro'],
+                $endereco['cidade'],
+                $endereco['uf']
+            ]);
+
+            // Não logamos Endereços na AUDITORIA, apenas a ENTIDADE.
+
+            return $this->pdo->lastInsertId();
+        } catch (\PDOException $e) {
+            // Logar o erro
+            return false;
+        }
     }
 }
