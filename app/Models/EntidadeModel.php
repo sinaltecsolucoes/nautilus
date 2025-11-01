@@ -207,40 +207,154 @@ class EntidadeModel
     }
 
     /**
-     * Busca os dados formatados para o DataTables.
-     * Necessário para a listagem (Controller: listarEntidades).
-     * @param array $params Parâmetros DataTables (start, length, search).
-     * @return array Array formatado para o DataTables (draw, recordsTotal, data).
+     * Busca dados das entidades no formato DataTables (Server-Side).
+     * @param array $params Parâmetros DataTables (start, length, search, tipo).
+     * @return array Dados paginados e totais.
      */
-    public function findAllForDataTable(array $params): array
+    /* public function getForDataTable(array $params): array
     {
-        // Esta é uma SIMPLIFICAÇÃO. O código real é complexo e foi visto no seu repositório de referência.
-        // Aqui, apenas fornecemos o esqueleto para evitar o erro P1013 e PHP0418.
+        $start = $params['start'];
+        $length = $params['length'];
+        $searchValue = $params['search'];
+        $tipo = $params['tipo'];
 
-        $draw = $params['draw'] ?? 1;
-        $searchValue = $params['search']['value'] ?? '';
-        $pageType = $params['tipo_entidade'] ?? 'Cliente';
+        $bindParams = [];
+        $where = "WHERE 1=1 ";
 
-        // Lógica de filtragem e contagem (aqui estamos simulando)
-        $totalRecords = $this->pdo->query("SELECT COUNT(id) FROM {$this->tableEntidade}")->fetchColumn();
+        // 1. Filtragem pelo TIPO (Cliente/Fornecedor/Transportadora)
+        if (strtolower($tipo) !== 'entidades') {
+            $where .= "AND tipo = :tipo ";
+            $bindParams[':tipo'] = $tipo;
+        }
 
-        $sql = "SELECT ent.id, ent.tipo, ent.tipo_pessoa, ent.razao_social, ent.nome_fantasia, 
-                       ent.cnpj_cpf, ent.situacao, end.logradouro AS end_logradouro, 
-                       end.numero AS end_numero
-                FROM {$this->tableEntidade} ent 
-                LEFT JOIN {$this->tableEndereco} end ON ent.id = end.entidade_id AND end.tipo_endereco = 'Principal'
-                WHERE ent.tipo LIKE :tipo AND (ent.razao_social LIKE :search OR ent.cnpj_cpf LIKE :search)
-                LIMIT :start, :length";
+        // 2. Filtragem pela PESQUISA GLOBAL (Search)
+        if (!empty($searchValue)) {
+            $where .= "AND (razao_social LIKE :search OR cnpj_cpf LIKE :search OR nome_fantasia LIKE :search) ";
+            // Adicionamos o coringa (%) para a pesquisa LIKE
+            $bindParams[':search'] = "%" . $searchValue . "%";
 
-        // NOTA: O método findById e a lógica de filtros estão omissos aqui por brevidade.
+            // Se já temos a condição do tipo, a pesquisa aplica-se dentro desse tipo.
+        }
 
-        $data = $this->pdo->query("SELECT id, tipo, tipo_pessoa, razao_social, nome_fantasia, cnpj_cpf, situacao FROM {$this->tableEntidade} LIMIT 10")->fetchAll();
+        // 3. Contagem Total de Registros (Sem filtro de pesquisa)
+        $sqlTotal = "SELECT COUNT(id) FROM {$this->tableEntidade} " . ($where === "WHERE 1=1 " ? "" : $where);
+        // Clonamos os params, mas removemos o search para o totalFiltered
+        $paramsTotal = $bindParams;
+        unset($paramsTotal[':search']); // Se houver, remover o search para o total geral
+
+        $stmtTotal = $this->pdo->prepare($sqlTotal);
+        // Ajuste para bindar apenas o :tipo (se existir) para o total geral
+        $stmtTotal->execute(array_filter($paramsTotal, fn($k) => $k === ':tipo', ARRAY_FILTER_USE_KEY));
+        $totalRecords = $stmtTotal->fetchColumn();
+
+
+        // 4. Contagem de Registros Filtrados (Com filtro de pesquisa)
+        $sqlFiltered = "SELECT COUNT(id) FROM {$this->tableEntidade} " . $where;
+        $stmtFiltered = $this->pdo->prepare($sqlFiltered);
+        $stmtFiltered->execute($bindParams); // Executa com todos os filtros
+        $totalFiltered = $stmtFiltered->fetchColumn();
+
+
+        // 5. Query Principal com Limite (Paginação)
+        $sqlData = "SELECT id, situacao, tipo, razao_social, cnpj_cpf FROM {$this->tableEntidade} 
+                    {$where} 
+                    ORDER BY razao_social ASC 
+                    LIMIT :start, :length";
+
+        $stmtData = $this->pdo->prepare($sqlData);
+
+        // Bindar os parâmetros e limites
+        foreach ($bindParams as $key => $value) {
+            $stmtData->bindValue($key, $value);
+        }
+        $stmtData->bindValue(':start', (int)$start, PDO::PARAM_INT);
+        $stmtData->bindValue(':length', (int)$length, PDO::PARAM_INT);
+
+        $stmtData->execute();
+        $data = $stmtData->fetchAll(PDO::FETCH_ASSOC);
 
         return [
-            "draw" => (int) $draw,
-            "recordsTotal" => (int) $totalRecords,
-            "recordsFiltered" => (int) $totalRecords,
-            "data" => $data
+            'total' => $totalRecords,
+            'totalFiltered' => $totalFiltered,
+            'data' => $data
+        ];
+    } */
+
+    /**
+     * Busca dados das entidades no formato DataTables (Server-Side).
+     * @param array $params Parâmetros DataTables (start, length, search, tipo).
+     * @return array Dados paginados e totais.
+     */
+
+    public function getForDataTable(array $params): array
+    {
+        $start = $params['start'];
+        $length = $params['length'];
+        $searchValue = $params['search'];
+        $tipo = $params['tipo'];
+
+        $bindParams = [];
+        $where = "WHERE 1=1 ";
+
+        // --- 1. CONDIÇÃO BASE: Filtragem pelo TIPO ---
+        $tipoIsSet = (strtolower($tipo) !== 'entidades');
+        if ($tipoIsSet) {
+            $where .= "AND tipo = :tipo ";
+            $bindParams[':tipo'] = $tipo;
+        }
+
+        // --- 2. CONDIÇÃO DA PESQUISA GLOBAL (SEARCH) ---
+        $searchIsSet = !empty($searchValue);
+        if ($searchIsSet) {
+            $where .= "AND (razao_social LIKE :search1 OR cnpj_cpf LIKE :search2 OR nome_fantasia LIKE :search3) ";
+            $bindParams[':search1'] = "%" . $searchValue . "%";
+            $bindParams[':search2'] = "%" . $searchValue . "%";
+            $bindParams[':search3'] = "%" . $searchValue . "%";
+        }
+
+        // --- 3. CONTAGEM TOTAL (Sem pesquisa, Apenas filtro por Tipo) ---
+        $sqlTotal = "SELECT COUNT(id) FROM {$this->tableEntidade}";
+        if ($tipoIsSet) {
+            $sqlTotal .= " WHERE tipo = :tipo";
+        }
+        $stmtTotal = $this->pdo->prepare($sqlTotal);
+        if ($tipoIsSet) {
+            $stmtTotal->bindValue(':tipo', $tipo);
+        }
+        $stmtTotal->execute();
+        $totalRecords = $stmtTotal->fetchColumn();
+
+        // --- 4. CONTAGEM FILTRADA (Com pesquisa E filtro por Tipo) ---
+        $sqlFiltered = "SELECT COUNT(id) FROM {$this->tableEntidade} " . $where;
+        $stmtFiltered = $this->pdo->prepare($sqlFiltered);
+        foreach ($bindParams as $key => $value) {
+            $stmtFiltered->bindValue($key, $value);
+        }
+        $stmtFiltered->execute();
+        $totalFiltered = $stmtFiltered->fetchColumn();
+
+        // --- 5. QUERY PRINCIPAL COM LIMITE (Dados) ---
+        $sqlData = "SELECT id, situacao, tipo, razao_social, cnpj_cpf FROM {$this->tableEntidade} 
+                {$where} 
+                ORDER BY razao_social ASC 
+                LIMIT :start, :length";
+
+        $stmtData = $this->pdo->prepare($sqlData);
+
+        // Bindar os parâmetros nomeados
+        foreach ($bindParams as $key => $value) {
+            $stmtData->bindValue($key, $value);
+        }
+        $stmtData->bindValue(':start', (int)$start, PDO::PARAM_INT);
+        $stmtData->bindValue(':length', (int)$length, PDO::PARAM_INT);
+
+        $stmtData->execute();
+        $data = $stmtData->fetchAll(PDO::FETCH_ASSOC);
+
+        return [
+            'total' => $totalRecords,
+            'totalFiltered' => $totalFiltered,
+            'data' => $data
         ];
     }
 
@@ -384,5 +498,59 @@ class EntidadeModel
             // Logar o erro
             return false;
         }
+    }
+
+    /**
+     * Busca um endereço adicional pelo ID.
+     * @param int $id O ID do registro de ENDERECOS.
+     * @return array|false Dados do endereço.
+     */
+    public function findEnderecoAdicional(int $id)
+    {
+        $sql = "SELECT id, tipo_endereco, cep, logradouro, numero, complemento, bairro, cidade, uf 
+                FROM {$this->tableEndereco} 
+                WHERE id = :id";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':id' => $id]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Atualiza um endereço adicional existente.
+     * @param int $id O ID do registro de ENDERECOS.
+     * @param array $endereco Dados do endereço a serem atualizados.
+     * @return bool Sucesso ou falha.
+     */
+    public function updateEnderecoAdicional(int $id, array $endereco)
+    {
+        $sql = "UPDATE {$this->tableEndereco} SET 
+            tipo_endereco = ?, cep = ?, logradouro = ?, numero = ?, complemento = ?, bairro = ?, cidade = ?, uf = ?
+            WHERE id = ?";
+
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([
+            $endereco['tipo_endereco'],
+            $endereco['cep'],
+            $endereco['logradouro'],
+            $endereco['numero'],
+            $endereco['complemento'] ?? null,
+            $endereco['bairro'],
+            $endereco['cidade'],
+            $endereco['uf'],
+            $id
+        ]);
+    }
+
+    /**
+     * Deleta um endereço adicional.
+     * @param int $id O ID do registro de ENDERECOS.
+     * @return bool Sucesso ou falha.
+     */
+    public function deleteEnderecoAdicional(int $id)
+    {
+        $sql = "DELETE FROM {$this->tableEndereco} WHERE id = ?";
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([$id]);
     }
 }

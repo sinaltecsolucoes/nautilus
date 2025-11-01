@@ -33,10 +33,10 @@ class EntidadeController
      */
     public function index()
     {
-        $pageType = $this->getPageTypeFromRoute();
+        $pageType = $this->getPageTypeFromRoute(); // 'Cliente', 'Fornecedor', 'Transportadora'
         $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
 
-        // Exemplo de VERIFICAÇÃO DE PERMISSÃO (ACL/RBAC)
+        // VERIFICAÇÃO DE PERMISSÃO (ACL/RBAC)
         if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Ler')) {
             http_response_code(403);
             die("Acesso Negado: Você não tem permissão para visualizar este módulo.");
@@ -46,12 +46,11 @@ class EntidadeController
             'title' => ucfirst($pageType) . 's', // Título dinâmico
             'pageType' => $pageType,
             'csrf_token' => $_SESSION['csrf_token'] ?? $this->generateCsrfToken(), // Gera token
-            'pageScript' => 'entidades'
+            'pageScript' => 'entidades',
         ];
 
         // RENDERIZAÇÃO
         ob_start();
-        // A View agora será dinâmica (entidades/index.php ou lista_entidades.php)
         require_once ROOT_PATH . '/app/Views/entidades/lista_entidades.php';
         $content = ob_get_clean();
         require_once ROOT_PATH . '/app/Views/layout.php';
@@ -97,8 +96,6 @@ class EntidadeController
         }
     }
 
-    // Futuramente: listarEntidades(), salvarEntidade(), etc., seguirão aqui.
-
     // =================================================================
     // AUXILIARES
     // =================================================================
@@ -113,7 +110,7 @@ class EntidadeController
 
     private function generateCsrfToken()
     {
-        // Implementar geração de token e salvar em $_SESSION
+        // Implementa geração de token e salvar em $_SESSION
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
         return $_SESSION['csrf_token'];
     }
@@ -131,13 +128,35 @@ class EntidadeController
             exit;
         }
 
-        // 2. Coleta parâmetros e chama o Model
+        // 2. Coleta de Parâmetros do DataTables (POST)
+        $draw = filter_input(INPUT_POST, 'draw', FILTER_VALIDATE_INT) ?? 1;
+        $start = filter_input(INPUT_POST, 'start', FILTER_VALIDATE_INT) ?? 0;
+        $length = filter_input(INPUT_POST, 'length', FILTER_VALIDATE_INT) ?? 10;
+        $searchValue = filter_input(INPUT_POST, 'search', FILTER_DEFAULT, FILTER_REQUIRE_ARRAY)['value'] ?? '';
+
+        // Parâmetro personalizado para filtrar por Cliente/Fornecedor/etc.
+        $tipoEntidade = filter_input(INPUT_POST, 'tipo_entidade', FILTER_SANITIZE_SPECIAL_CHARS) ?? 'Entidades';
+
+        // 3. Chama o Model para buscar os dados
         try {
-            $output = $this->entidadeModel->findAllForDataTable($_POST); // Usa o método do Model criado no seu repositório de referência
-            echo json_encode($output);
+            $resultado = $this->entidadeModel->getForDataTable([
+                'start' => $start,
+                'length' => $length,
+                'search' => $searchValue,
+                'tipo' => $tipoEntidade
+            ]);
+
+            // 4. Monta a Resposta no formato DataTables
+            echo json_encode([
+                'draw' => $draw,
+                'recordsTotal' => $resultado['total'],
+                'recordsFiltered' => $resultado['totalFiltered'],
+                'data' => $resultado['data']
+            ]);
         } catch (\Exception $e) {
-            error_log("Erro em listarEntidades: " . $e->getMessage());
-            echo json_encode(["error" => "Erro ao processar dados."]);
+            http_response_code(500);
+            error_log("Erro no listarEntidades: " . $e->getMessage());
+            echo json_encode(['error' => 'Erro interno do servidor ao buscar dados.']);
         }
     }
 
@@ -298,6 +317,29 @@ class EntidadeController
     }
 
     /**
+     * Rota AJAX para buscar um endereço adicional por ID (para edição).
+     */
+    public function getEnderecoAdicional()
+    {
+        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        $id = filter_input(INPUT_POST, 'end_id', FILTER_VALIDATE_INT);
+
+        if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Ler')) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Acesso negado.']);
+            exit;
+        }
+
+        $dados = $this->entidadeModel->findEnderecoAdicional($id);
+
+        if ($dados) {
+            echo json_encode(['success' => true, 'data' => $dados]);
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Endereço não encontrado.']);
+        }
+    }
+
+    /**
      * Rota AJAX para listar endereços adicionais (Usado pelo DataTables/Listagem).
      */
     public function listarEnderecosAdicionais()
@@ -333,9 +375,11 @@ class EntidadeController
     {
         $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
         $entidadeId = filter_input(INPUT_POST, 'entidade_id', FILTER_VALIDATE_INT);
+        $endId = filter_input(INPUT_POST, 'end_id', FILTER_VALIDATE_INT); // ID do endereço
+        $acao = $endId ? 'Alterar' : 'Criar';
 
-        // A ACL deve checar a permissão 'Alterar' em 'Entidades' (pois está modificando um registro existente)
-        if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Alterar')) {
+        // A ACL deve checar a permissão 'acao' em 'Entidades' 
+        if (!PermissaoService::checarPermissao($cargo, 'Entidades', $acao)) {
             http_response_code(403);
             echo json_encode(['success' => false, 'message' => 'Acesso negado para salvar endereço adicional.']);
             exit;
@@ -346,7 +390,7 @@ class EntidadeController
             exit;
         }
 
-        // Simulação de coleta e validação de dados
+        // Coleta e validação de dados
         $dataEndereco = [
             'tipo_endereco' => filter_input(INPUT_POST, 'tipo_endereco', FILTER_SANITIZE_SPECIAL_CHARS),
             'cep'           => filter_input(INPUT_POST, 'cep', FILTER_SANITIZE_SPECIAL_CHARS),
@@ -356,20 +400,58 @@ class EntidadeController
             'bairro'        => filter_input(INPUT_POST, 'bairro', FILTER_SANITIZE_SPECIAL_CHARS),
             'cidade'        => filter_input(INPUT_POST, 'cidade', FILTER_SANITIZE_SPECIAL_CHARS),
             'uf'            => filter_input(INPUT_POST, 'uf', FILTER_SANITIZE_SPECIAL_CHARS),
+            'end_id'        => $endId,
         ];
 
-        // Adicionar validação (ex: campos obrigatórios)
-
         try {
-            $newId = $this->entidadeModel->createEnderecoAdicional($entidadeId, $dataEndereco);
+            if ($endId) {
+                // UPDATE
+                $this->entidadeModel->updateEnderecoAdicional($endId, $dataEndereco);
+                $message = 'Endereço adicional atualizado com sucesso!';
+                $newId = $endId;
+            } else {
+                // CREATE
+                $newId = $this->entidadeModel->createEnderecoAdicional($entidadeId, $dataEndereco);
+                $message = 'Endereço adicional salvo com sucesso!';
+            }
 
             if ($newId) {
-                echo json_encode(['success' => true, 'message' => 'Endereço adicional salvo com sucesso!', 'end_id' => $newId]);
+                echo json_encode(['success' => true, 'message' => $message, 'end_id' => $newId]);
             } else {
                 echo json_encode(['success' => false, 'message' => 'Erro ao salvar o endereço no banco de dados.']);
             }
         } catch (\PDOException $e) {
             echo json_encode(['success' => false, 'message' => 'Erro no banco de dados: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Rota AJAX para deletar um endereço adicional.
+     */
+    public function deleteEnderecoAdicional()
+    {
+        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        $endId = filter_input(INPUT_POST, 'end_id', FILTER_VALIDATE_INT);
+
+        if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Alterar')) { 
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Acesso negado.']);
+            exit;
+        }
+
+        if (!$endId) {
+            echo json_encode(['success' => false, 'message' => 'ID de endereço inválido.']);
+            exit;
+        }
+
+        try {
+            if ($this->entidadeModel->deleteEnderecoAdicional($endId)) {
+                echo json_encode(['success' => true, 'message' => 'Endereço adicional excluído com sucesso!']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Falha ao excluir. Endereço não encontrado.']);
+            }
+        } catch (\PDOException $e) {
+            echo json_encode(['success' => false, 'message' => 'Erro no banco de dados.']);
         }
     }
 }

@@ -8,11 +8,28 @@
  */
 
 $pageType = $data['pageType'];
-$titulo = ucfirst($pageType) . 's';
 $singular = ucfirst($pageType);
+
+if (strtolower($pageType) === 'fornecedor') {
+    $titulo = 'Fornecedores';
+} else {
+    // Regra geral (Clientes, Transportadoras)
+    $titulo = $singular . 's';
+}
 ?>
 
+<script>
+    // Usada para filtrar a DataTables e controlar a UI
+    const ENTIDADE_TYPE = '<?php echo $pageType; ?>';
+</script>
+
 <h1 class="h3 mb-2 text-gray-800"><?php echo $titulo; ?></h1>
+
+<div id="entidade-data"
+    data-base-url="<?php echo BASE_URL; ?>"
+    data-csrf-token="<?php echo htmlspecialchars($data['csrf_token']); ?>"
+    style="display: none;">
+</div>  
 
 <div class="card shadow mb-4">
     <div class="card-header py-3 d-flex justify-content-between align-items-center">

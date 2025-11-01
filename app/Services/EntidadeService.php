@@ -66,7 +66,7 @@ class EntidadeService
                 'inscricao_estadual' => strtoupper($registrations['number'] ?? ''),
                 'tipo_pessoa'        => 'Juridica',
 
-                // Dados de Endereço
+                // Dados de Endereço (Corrigido para garantir que o número seja mapeado)
                 'cep'                => preg_replace('/\D/', '', $address['zip'] ?? ''),
                 'logradouro'         => strtoupper($address['street'] ?? ''),
                 'numero'             => strtoupper($address['number'] ?? ''), 
@@ -100,6 +100,7 @@ class EntidadeService
                 'uf'                 => strtoupper($dataBrasilApi['uf'] ?? '')
             ];
         }
+
         // Se ambas falharem
         return false;
     }

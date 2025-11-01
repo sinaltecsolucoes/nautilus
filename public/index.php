@@ -82,8 +82,10 @@ $routes = [
     'entidades/deletar' => ['EntidadeController', 'deleteEntidade'],
 
     // Rotas de Ações CRUD para Endereços Adicionais
-    'entidades/enderecos/listar' => ['EntidadeController', 'listarEnderecosAdicionais'], 
-    'entidades/enderecos/salvar' => ['EntidadeController', 'salvarEnderecoAdicional'], 
+    'entidades/enderecos/listar' => ['EntidadeController', 'listarEnderecosAdicionais'],
+    'entidades/enderecos/salvar' => ['EntidadeController', 'salvarEnderecoAdicional'],
+    'entidades/enderecos/get'    => ['EntidadeController', 'getEnderecoAdicional'],  
+    'entidades/enderecos/deletar' => ['EntidadeController', 'deleteEnderecoAdicional'], 
 
     // Rotas de Funcionários
     'usuarios'          => ['FuncionarioController', 'index'],
