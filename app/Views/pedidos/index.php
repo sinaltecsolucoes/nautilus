@@ -96,22 +96,24 @@ $csrf_token = $data['csrf_token'] ?? '';
 
                     <hr class="mt-4">
 
-                    <div class="col-md-3">
+                    <div class="col-md-6 mb-3">
                         <label for="pedido-salinidade" class="form-label">Salinidade</label>
-                        <select class="form-select" id="pedido-salinidade" name="ped_salinidade" required>
-                            <option value="43">43</option>
-                            <option value="2">2</option>
-                            <option value="Canal">Canal</option>
-                        </select>
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="pedido-salinidade"
+                            name="ped_salinidade"
+                            placeholder="Ex: 30 ppt">
                     </div>
-                    <div class="col-md-3">
+
+                    <div class="col-md-6 mb-3">
                         <label for="pedido-divisao" class="form-label">Divisão</label>
-                        <select class="form-select" id="pedido-divisao" name="ped_divisao" required>
-                            <option value="02 viveiros">02 Viveiros</option>
-                            <option value="04 divisoes">04 Divisões</option>
-                            <option value="embaladas">Embaladas</option>
-                            <option value="raceway">Raceway</option>
-                        </select>
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="pedido-divisao"
+                            name="ped_divisao"
+                            placeholder="Ex: 02 Viveiros">
                     </div>
                     <div class="col-md-3">
                         <label for="pedido-forma-pagamento" class="form-label">Forma de Pagamento</label>

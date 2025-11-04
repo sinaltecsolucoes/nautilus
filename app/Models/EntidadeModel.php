@@ -553,4 +553,41 @@ class EntidadeModel
         $stmt = $this->pdo->prepare($sql);
         return $stmt->execute([$id]);
     }
+
+    /**
+     * Busca Entidades ativas para Select2 (Proprietários).
+     * @param string $term Termo de busca (CNPJ/Nome).
+     * @return array Lista de entidades [id, text].
+     */
+    public function getEntidadesOptions(string $term = ''): array
+    {
+        $sql = "SELECT 
+                    id, 
+                    razao_social, 
+                    nome_fantasia
+                FROM {$this->tableEntidade} 
+                WHERE situacao = 'Ativo'";
+
+        $params = [];
+
+        if (!empty($term)) {
+            $sql .= " AND (razao_social LIKE :term OR nome_fantasia LIKE :term OR cnpj_cpf LIKE :term)";
+            $params[':term'] = '%' . $term . '%';
+        }
+
+        $sql .= " ORDER BY razao_social ASC LIMIT 50";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+
+        $results = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $name = $row['nome_fantasia'] ?: $row['razao_social'];
+            $results[] = [
+                'id' => $row['id'],
+                'text' => $name
+            ];
+        }
+        return $results;
+    }
 }

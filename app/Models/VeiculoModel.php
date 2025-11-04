@@ -7,15 +7,18 @@
  */
 
 require_once __DIR__ . '/Database.php';
+require_once ROOT_PATH . '/app/Services/AuditLoggerService.php';
 
 class VeiculoModel
 {
     private $pdo;
     private $table = 'VEICULOS';
+    private $logger;
 
     public function __construct()
     {
         $this->pdo = Database::getInstance()->getConnection();
+        $this->logger = new AuditLoggerService();
     }
 
     /**
@@ -47,13 +50,12 @@ class VeiculoModel
     }
 
     /**
-     * Busca os dados formatados para o DataTables.
+     * Busca os dados formatados para o DataTables (CORRIGIDO: BIND DE PARÂMETROS).
      * @param array $params Parâmetros DataTables (start, length, search).
      * @return array Array formatado para o DataTables.
      */
     public function findAllForDataTable(array $params): array
     {
-        // SIMPLIFICAÇÃO: A query final precisará de JOIN com ENTIDADES para mostrar o proprietário.
         $draw = $params['draw'] ?? 1;
         $start = $params['start'] ?? 0;
         $length = $params['length'] ?? 10;
@@ -62,35 +64,40 @@ class VeiculoModel
         $sqlBase = "FROM VEICULOS v 
                     LEFT JOIN ENTIDADES e ON v.proprietario_entidade_id = e.id";
 
-        $conditions = [];
-        $queryParams = [];
+        $bindParams = [];
+        $where = "WHERE 1=1 ";
 
+        // 1. CONDIÇÃO DA PESQUISA GLOBAL (SEARCH)
         if (!empty($searchValue)) {
-            $conditions[] = "(v.placa LIKE :search OR v.modelo LIKE :search OR e.razao_social LIKE :search)";
-            $queryParams[':search'] = '%' . $searchValue . '%';
+            $where .= "AND (v.placa LIKE :search1 OR v.modelo LIKE :search2 OR e.razao_social LIKE :search3) ";
+            $bindParams[':search1'] = '%' . $searchValue . '%';
+            $bindParams[':search2'] = '%' . $searchValue . '%';
+            $bindParams[':search3'] = '%' . $searchValue . '%';
         }
 
-        $whereClause = !empty($conditions) ? " WHERE " . implode(" AND ", $conditions) : "";
+        // 2. Contagem Total
+        $sqlTotal = "SELECT COUNT(v.id) $sqlBase";
+        $totalRecords = $this->pdo->query("SELECT COUNT(id) FROM VEICULOS")->fetchColumn(); // Total sem filtro
 
-        $sqlCount = "SELECT COUNT(v.id) $sqlBase";
-        $totalRecords = $this->pdo->query("SELECT COUNT(id) FROM VEICULOS")->fetchColumn();
-
-        $stmtFiltered = $this->pdo->prepare($sqlCount . $whereClause);
-        $stmtFiltered->execute($queryParams);
+        // 3. Contagem Filtrada
+        $sqlFiltered = "SELECT COUNT(v.id) $sqlBase $where";
+        $stmtFiltered = $this->pdo->prepare($sqlFiltered);
+        $stmtFiltered->execute($bindParams); // Executa com a pesquisa e o JOIN
         $totalFiltered = $stmtFiltered->fetchColumn();
 
+        // 4. Dados
         $sqlData = "SELECT 
                         v.id, v.placa, v.modelo, v.ano, v.tipo_frota, v.situacao,
                         COALESCE(e.nome_fantasia, e.razao_social) AS proprietario_nome
-                    $sqlBase $whereClause 
+                    $sqlBase $where 
                     ORDER BY v.placa ASC 
                     LIMIT :start, :length";
 
         $stmt = $this->pdo->prepare($sqlData);
         $stmt->bindValue(':start', (int) $start, PDO::PARAM_INT);
         $stmt->bindValue(':length', (int) $length, PDO::PARAM_INT);
-        foreach ($queryParams as $key => &$value) {
-            $stmt->bindParam($key, $value);
+        foreach ($bindParams as $key => &$value) { // Vincula os parâmetros de pesquisa
+            $stmt->bindValue($key, $value);
         }
         $stmt->execute();
         $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -106,10 +113,13 @@ class VeiculoModel
     /**
      * Insere um novo registro de veículo no DB.
      * @param array $data Dados do veículo.
+     * @param int $userId ID do usuário logado (para auditoria).
      * @return int|false ID do novo veículo ou false em caso de erro.
      */
-    public function create(array $data)
+    public function create(array $data, int $userId)
     {
+        $this->pdo->beginTransaction();
+
         $sql = "INSERT INTO {$this->table} (
                     placa, modelo, ano, tipo_frota, chassi, especie_tipo, tipo_combustivel, 
                     autonomia, renavam, crv, valor_licenciamento, valor_ipva, 
@@ -123,13 +133,13 @@ class VeiculoModel
         try {
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute([
+                // ... (bindings de dados)
                 ':placa' => $data['veiculo_placa'],
                 ':modelo' => $data['veiculo_modelo'],
                 ':ano' => $data['veiculo_ano'],
                 ':tipo_frota' => $data['veiculo_tipo_frota'],
                 ':chassi' => $data['veiculo_chassi'],
 
-                // Trata campos opcionais com null ou valor padrão
                 ':especie_tipo' => $data['veiculo_especie_tipo'] ?? null,
                 ':tipo_combustivel' => $data['veiculo_tipo_combustivel'] ?? 'Diesel',
                 ':autonomia' => $data['veiculo_autonomia'] ?? 0.0,
@@ -139,11 +149,26 @@ class VeiculoModel
                 ':valor_ipva' => $data['veiculo_ipva'] ?? 0.0,
                 ':valor_depreciacao' => $data['veiculo_depreciacao'] ?? 0.0,
 
-                ':proprietario_entidade_id' => $data['veiculo_proprietario_id'],
-                ':situacao' => $data['veiculo_situacao'] ?? 'Ativo' 
+                ':proprietario_entidade_id' => $data['proprietario_entidade_id'],
+                ':situacao' => $data['veiculo_situacao'] ?? 'Ativo'
             ]);
-            return $this->pdo->lastInsertId();
+
+            $veiculoId = $this->pdo->lastInsertId();
+
+            // LOG DE AUDITORIA
+            $this->logger->log(
+                'CREATE',
+                $this->table,
+                $veiculoId,
+                null,
+                ['placa' => $data['veiculo_placa'], 'modelo' => $data['veiculo_modelo']],
+                $userId
+            );
+
+            $this->pdo->commit();
+            return $veiculoId;
         } catch (\PDOException $e) {
+            $this->pdo->rollBack();
             throw $e;
         }
     }
@@ -170,10 +195,14 @@ class VeiculoModel
      * Atualiza um veículo existente.
      * @param int $id ID do veículo a ser atualizado.
      * @param array $data Dados do veículo.
+     * @param int $userId ID do usuário logado (para auditoria).
      * @return bool
      */
-    public function update(int $id, array $data): bool
+    public function update(int $id, array $data, int $userId): bool
     {
+        $this->pdo->beginTransaction();
+        $dadosAntigos = $this->find($id);
+
         $sql = "UPDATE {$this->table} SET
                     placa = :placa, modelo = :modelo, ano = :ano, tipo_frota = :tipo_frota, 
                     chassi = :chassi, tipo_combustivel = :tipo_combustivel, autonomia = :autonomia, 
@@ -183,7 +212,7 @@ class VeiculoModel
 
         try {
             $stmt = $this->pdo->prepare($sql);
-            return $stmt->execute([
+            $success = $stmt->execute([
                 ':placa' => $data['veiculo_placa'],
                 ':modelo' => $data['veiculo_modelo'],
                 ':ano' => $data['veiculo_ano'],
@@ -192,11 +221,20 @@ class VeiculoModel
                 ':tipo_combustivel' => $data['veiculo_tipo_combustivel'] ?? 'Diesel',
                 ':autonomia' => $data['veiculo_autonomia'] ?? 0.0,
                 ':valor_ipva' => $data['veiculo_ipva'] ?? 0.0,
-                ':proprietario_entidade_id' => $data['veiculo_proprietario_id'],
+                ':proprietario_entidade_id' => $data['proprietario_entidade_id'],
                 ':situacao' => $data['veiculo_situacao'] ?? 'Ativo',
                 ':id' => $id
             ]);
+
+            // LOG DE AUDITORIA
+            if ($success) {
+                $this->logger->log('UPDATE', $this->table, $id, $dadosAntigos, $data, $userId);
+            }
+
+            $this->pdo->commit();
+            return $success;
         } catch (\PDOException $e) {
+            $this->pdo->rollBack();
             throw $e;
         }
     }
@@ -204,12 +242,28 @@ class VeiculoModel
     /**
      * Exclui um veículo.
      * @param int $id ID do veículo.
+     * @param int $userId ID do usuário logado (para auditoria).
      * @return bool
      */
-    public function delete(int $id): bool
+    public function delete(int $id, int $userId): bool
     {
-        // Implementar a auditoria aqui futuramente
-        $stmt = $this->pdo->prepare("DELETE FROM {$this->table} WHERE id = :id");
-        return $stmt->execute([':id' => $id]);
+        $this->pdo->beginTransaction();
+        $dadosAntigos = $this->find($id);
+
+        try {
+            $stmt = $this->pdo->prepare("DELETE FROM {$this->table} WHERE id = :id");
+            $success = $stmt->execute([':id' => $id]);
+
+            // LOG DE AUDITORIA
+            if ($success) {
+                $this->logger->log('DELETE', $this->table, $id, $dadosAntigos, null, $userId);
+            }
+
+            $this->pdo->commit();
+            return $success;
+        } catch (\PDOException $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
     }
 }

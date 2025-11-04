@@ -8,12 +8,14 @@
 
 require_once ROOT_PATH . '/app/Models/PedidoModel.php';
 require_once ROOT_PATH . '/app/Models/EntidadeModel.php'; // Para buscar Clientes
+require_once ROOT_PATH . '/app/Models/FuncionarioModel.php';
 require_once ROOT_PATH . '/app/Services/PermissaoService.php';
 
 class PedidoController
 {
     private $pedidoModel;
     private $entidadeModel;
+    private $funcionarioModel;
 
     public function __construct()
     {
@@ -21,26 +23,38 @@ class PedidoController
             session_start();
         }
         $this->pedidoModel = new PedidoModel();
+
+        // Inicializamos Models de apoio para Selects/Options
         $this->entidadeModel = new EntidadeModel();
+        $this->funcionarioModel = new FuncionarioModel();
     }
 
     /**
-     * Exibe a lista e o formulário de Pedidos.
+     * Exibe a tela de listagem e o modal de Pedidos.
+     * Rota: /pedidos
      */
     public function index()
     {
         $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        $userId = $_SESSION['user_id'] ?? 0;
 
-        // Exemplo de VERIFICAÇÃO DE PERMISSÃO (ACL/RBAC)
-        if (!PermissaoService::checarPermissao($cargo, 'Vendas', 'Ler')) {
-            http_response_code(403);
-            die("Acesso Negado: Você não tem permissão para visualizar o Módulo de Vendas.");
-        }
-
+        // VERIFICAÇÃO DE PERMISSÃO (ACL/RBAC)
         $data = [
             'title' => 'Gestão de Pedidos/Previsões',
             'csrf_token' => $_SESSION['csrf_token'] ?? $this->generateCsrfToken(),
             // Futuramente: Opções para Salinidade, Condição, etc.
+        ];
+
+        // Dados para o formulário de Pedido
+        $data = [
+            'title' => 'Gestão de Pedidos/Previsões',
+            'csrf_token' => $_SESSION['csrf_token'] ?? $this->generateCsrfToken(),
+            'pageScript' => 'pedidos',
+
+            // Opções para Selects:
+            'vendedores' => $this->funcionarioModel->getFuncionariosByCargos(['Vendedor', 'Auxiliar de Vendas']),
+            // Clientes serão carregados via Select2 (AJAX) para performance!
+            // Os options de forma de pagamento e condição vêm da ENUM no Model.
         ];
 
         // RENDERIZAÇÃO
@@ -56,7 +70,7 @@ class PedidoController
     public function listarPedidos()
     {
         $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
-        if (!PermissaoService::checarPermissao($cargo, 'Vendas', 'Ler')) {
+        if (!PermissaoService::checarPermissao($cargo, 'Previsoes', 'Ler')) {
             http_response_code(403);
             echo json_encode(["error" => "Acesso negado."]);
             exit;
@@ -78,44 +92,183 @@ class PedidoController
     }
 
     /**
-     * Rota AJAX para salvar um novo pedido (POST).
+     * Salva ou Atualiza um pedido (POST).
+     * Rota: /pedidos/salvar
      */
     public function salvarPedido()
     {
-        $id = filter_input(INPUT_POST, 'ped_id', FILTER_VALIDATE_INT);
+        $id = filter_input(INPUT_POST, 'pedido_id', FILTER_VALIDATE_INT);
         $acao = $id ? 'Alterar' : 'Criar';
         $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        $userId = $_SESSION['user_id'] ?? 0; // Usuário logado que faz a ação
 
-        if (!PermissaoService::checarPermissao($cargo, 'Vendas', $acao)) {
+        if (!PermissaoService::checarPermissao($cargo, 'Previsoes', $acao)) {
             http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Acesso negado para salvar pedidos.']);
+            echo json_encode(['success' => false, 'message' => 'Acesso negado para esta ação.']);
+            exit;
+        }
+
+        // 1. Coleta e Sanitiza/Valida dados
+        $data = [
+            // CORRIGIDO: Usando os nomes da View (ped_*) e mapeando para o nome do Model (tabela)
+            'os_numero'             => filter_input(INPUT_POST, 'ped_os_numero', FILTER_SANITIZE_SPECIAL_CHARS),
+            'cliente_entidade_id'   => filter_input(INPUT_POST, 'ped_cliente_id', FILTER_VALIDATE_INT),
+            'vendedor_funcionario_id' => filter_input(INPUT_POST, 'ped_vendedor_id', FILTER_VALIDATE_INT),
+            'data_saida'            => filter_input(INPUT_POST, 'ped_data_saida', FILTER_SANITIZE_SPECIAL_CHARS),
+            'quantidade'            => filter_input(INPUT_POST, 'ped_quantidade', FILTER_VALIDATE_FLOAT),
+            'percentual_bonus'      => filter_input(INPUT_POST, 'ped_percentual_bonus', FILTER_VALIDATE_FLOAT),
+            'valor_unitario'        => filter_input(INPUT_POST, 'ped_valor_unitario', FILTER_VALIDATE_FLOAT),
+            'forma_pagamento'       => filter_input(INPUT_POST, 'ped_forma_pagamento', FILTER_SANITIZE_SPECIAL_CHARS),
+            'condicao'              => filter_input(INPUT_POST, 'ped_condicao', FILTER_SANITIZE_SPECIAL_CHARS),
+            'salinidade'            => filter_input(INPUT_POST, 'ped_salinidade', FILTER_SANITIZE_SPECIAL_CHARS),
+            'divisao'               => filter_input(INPUT_POST, 'ped_divisao', FILTER_SANITIZE_SPECIAL_CHARS),
+            'status'                => filter_input(INPUT_POST, 'ped_status', FILTER_SANITIZE_SPECIAL_CHARS),
+            'status_dia'            => filter_input(INPUT_POST, 'ped_status_dia', FILTER_SANITIZE_SPECIAL_CHARS),
+        ];
+
+        // 2. Validação básica de obrigatórios
+        if (empty($data['os_numero']) || !$data['cliente_entidade_id'] || !$data['vendedor_funcionario_id']) {
+            echo json_encode(['success' => false, 'message' => 'Campos obrigatórios (OS, Cliente, Vendedor) não preenchidos.']);
             exit;
         }
 
         try {
-            // Adiciona o ID do vendedor (usuário logado) para o Model
-            $_POST['ped_vendedor_id'] = $_SESSION['user_id'] ?? 0;
-
             if ($id) {
-                // $this->pedidoModel->update($id, $_POST); // Método update a ser criado
+                // UPDATE (Implementaremos depois)
                 $message = 'Pedido atualizado com sucesso!';
+                $newId = $id;
             } else {
-                $this->pedidoModel->create($_POST);
-                $message = 'Pedido registrado com sucesso!';
+                // CREATE
+                $newId = $this->pedidoModel->create($data, $userId);
+                $message = 'Pedido cadastrado com sucesso! (OS: ' . $data['os_numero'] . ')';
             }
 
-            echo json_encode(['success' => true, 'message' => $message]);
+            echo json_encode(['success' => true, 'message' => $message, 'pedido_id' => $newId]);
         } catch (\PDOException $e) {
-            if ($e->getCode() === '23000') {
-                $message = "Erro: Número de Ordem de Serviço (OS) já existe.";
-            } else {
-                $message = "Erro no banco de dados: " . $e->getMessage();
-            }
+            $message = "Erro no banco de dados. " . $e->getMessage();
             echo json_encode(['success' => false, 'message' => $message]);
         }
     }
 
-    // Futuramente: getClientesOptions, getNextOSNumber, etc.
+    /**
+     * Rota AJAX para retornar opções de Clientes ativos para Select2.
+     * Rota: /pedidos/clientes-options
+     */
+    public function getClientesOptions()
+    {
+        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        if (!PermissaoService::checarPermissao($cargo, 'Previsoes', 'Ler')) {
+            http_response_code(403);
+            echo json_encode(["results" => [], "error" => "Acesso negado."]);
+            exit;
+        }
+
+        // O Select2 envia o termo de busca via GET/POST
+        $term = $_GET['term'] ?? $_POST['term'] ?? '';
+
+        try {
+            // O EntidadeModel::getClienteOptions() retorna dados formatados [id, text]
+            $options = $this->entidadeModel->getClienteOptions($term);
+
+            // O Select2 espera os dados dentro de uma chave 'results'.
+            echo json_encode(['results' => $options]);
+        } catch (\Exception $e) {
+            error_log("Erro em getClientesOptions: " . $e->getMessage());
+            echo json_encode(['results' => [], 'error' => 'Erro ao buscar clientes.']);
+        }
+    }
+
+    /**
+     * Busca um pedido por ID para edição (POST).
+     * Rota: /pedidos/get
+     */
+    public function getPedido()
+    {
+        $id = filter_input(INPUT_POST, 'pedido_id', FILTER_VALIDATE_INT);
+        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+
+        if (!PermissaoService::checarPermissao($cargo, 'Previsoes', 'Ler')) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Acesso negado.']);
+            exit;
+        }
+
+        $dados = $this->pedidoModel->find($id);
+
+        if ($dados) {
+            echo json_encode(['success' => true, 'data' => $dados]);
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Pedido não encontrado.']);
+        }
+    }
+
+    /**
+     * Deleta um pedido (POST).
+     * Rota: /pedidos/deletar
+     */
+    public function deletePedido()
+    {
+        $id = filter_input(INPUT_POST, 'pedido_id', FILTER_VALIDATE_INT);
+        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        $userId = $_SESSION['user_id'] ?? 0;
+
+        if (!PermissaoService::checarPermissao($cargo, 'Previsoes', 'Deletar')) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Acesso negado para Deletar.']);
+            exit;
+        }
+
+        if (!$id) {
+            echo json_encode(['success' => false, 'message' => 'ID de pedido inválido.']);
+            exit;
+        }
+
+        try {
+            if ($this->pedidoModel->delete($id, $userId)) {
+                echo json_encode(['success' => true, 'message' => 'Pedido excluído com sucesso!']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Falha ao excluir. Pedido não encontrado.']);
+            }
+        } catch (\Exception $e) {
+            $message = strpos($e->getMessage(), 'Impossível excluir') !== false
+                ? $e->getMessage()
+                : "Erro no banco de dados. " . $e->getMessage();
+            echo json_encode(['success' => false, 'message' => $message]);
+        }
+    }
+
+
+    /**
+     * Retorna o próximo número sequencial para a OS.
+     * Rota: /pedidos/next-os
+     */
+    public function getNextOSNumber()
+    {
+        try {
+            // Define o valor inicial caso não haja registros.
+            $nextNumber = 1001;
+
+            // 1. Busca o último número de OS no Model
+            $lastOS = $this->pedidoModel->getLastOSNumber();
+
+            // 2. Se houver um último número, incrementa
+            if ($lastOS) {
+                // Se a OS for numérica (ex: "1000"), converte para int e soma 1.
+                // Se for alfanumérica, pode exigir lógica mais complexa, mas vamos assumir numérica/simples.
+                $nextNumber = (int) $lastOS + 1;
+            }
+
+            // Retorna o resultado como string (pois é VARCHAR no banco)
+            echo json_encode(['success' => true, 'os_number' => (string)$nextNumber]);
+        } catch (\Exception $e) {
+            error_log("Erro ao buscar próxima OS: " . $e->getMessage());
+            echo json_encode(['success' => false, 'message' => 'Erro ao gerar número de OS.']);
+        }
+    }
+
+    // =================================================================
+    // AUXILIARES
+    // =================================================================
 
     private function generateCsrfToken()
     {

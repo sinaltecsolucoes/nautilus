@@ -7,15 +7,18 @@
  */
 
 require_once __DIR__ . '/Database.php';
+require_once ROOT_PATH . '/app/Services/AuditLoggerService.php';
 
 class ExpedicaoModel
 {
     private $pdo;
     private $table = 'ENTREGAS_EXPEDICAO';
+    private $logger;
 
     public function __construct()
     {
         $this->pdo = Database::getInstance()->getConnection();
+        $this->logger = new AuditLoggerService();
     }
 
     /**
@@ -171,5 +174,202 @@ class ExpedicaoModel
         $stmt->execute([':user_id' => $userId]);
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Retorna a lista de Pedidos/Previsões que estão abertos (status: Confirmado)
+     * para serem alocados em uma entrega.
+     * @return array Lista simplificada de pedidos.
+     */
+    public function getPedidosPendentes(): array
+    {
+        // Esta query busca o básico. O Controller fará o mapeamento Select2/Options.
+        $sql = "SELECT 
+                    id, 
+                    os_numero, 
+                    data_saida,
+                    quantidade_com_bonus
+                FROM PREVISOES_VENDAS 
+                WHERE status = 'Confirmado' 
+                AND data_saida >= CURDATE()
+                ORDER BY data_saida ASC";
+
+        $stmt = $this->pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Busca dados das expedições no formato DataTables (Server-Side).
+     * @param array $params Parâmetros DataTables (start, length, search).
+     * @return array Dados paginados e totais.
+     */
+    public function findAllForDataTable(array $params): array
+    {
+        $start = $params['start'] ?? 0;
+        $length = $params['length'] ?? 10;
+        $searchValue = $params['search']['value'] ?? '';
+
+        $sqlBase = "FROM {$this->table} exp
+                    JOIN VEICULOS v ON exp.veiculo_id = v.id
+                    JOIN FUNCIONARIOS mp ON exp.motorista_principal_id = mp.id
+                    LEFT JOIN FUNCIONARIOS enc ON exp.encarregado_id = enc.id";
+
+        $bindParams = [];
+        $where = "WHERE 1=1 ";
+
+        // 1. CONDIÇÃO DA PESQUISA GLOBAL (SEARCH)
+        if (!empty($searchValue)) {
+            // Permite buscar por Nº Carga, Placa ou Nome do Motorista Principal
+            $where .= "AND (exp.numero_carregamento LIKE :search1 OR v.placa LIKE :search2 OR mp.nome_completo LIKE :search3) ";
+            $bindParams[':search1'] = "%" . $searchValue . "%";
+            $bindParams[':search2'] = "%" . $searchValue . "%";
+            $bindParams[':search3'] = "%" . $searchValue . "%";
+        }
+
+        // 2. Contagem Total de Registros
+        $sqlTotal = "SELECT COUNT(exp.id) " . $sqlBase;
+        $stmtTotal = $this->pdo->query($sqlTotal);
+        $totalRecords = $stmtTotal->fetchColumn();
+
+
+        // 3. Contagem de Registros Filtrados
+        $sqlFiltered = "SELECT COUNT(exp.id) " . $sqlBase . " " . $where;
+        $stmtFiltered = $this->pdo->prepare($sqlFiltered);
+        $stmtFiltered->execute($bindParams);
+        $totalFiltered = $stmtFiltered->fetchColumn();
+
+
+        // 4. Query Principal com Limite (Dados)
+        $sqlData = "SELECT 
+                        exp.id, 
+                        exp.numero_carregamento, 
+                        exp.data_carregamento, 
+                        v.placa AS veiculo_placa,
+                        mp.nome_completo AS motorista_principal_nome, 
+                        enc.nome_completo AS encarregado_nome,
+                        exp.status_logistica
+                    {$sqlBase} 
+                    {$where} 
+                    ORDER BY exp.data_carregamento DESC, exp.numero_carregamento DESC 
+                    LIMIT :start, :length";
+
+        $stmtData = $this->pdo->prepare($sqlData);
+
+        // Bindar os parâmetros nomeados (:search1, :search2, etc.)
+        foreach ($bindParams as $key => $value) {
+            $stmtData->bindValue($key, $value);
+        }
+        $stmtData->bindValue(':start', (int)$start, PDO::PARAM_INT);
+        $stmtData->bindValue(':length', (int)$length, PDO::PARAM_INT);
+
+        $stmtData->execute();
+        $data = $stmtData->fetchAll(PDO::FETCH_ASSOC);
+
+        return [
+            "draw" => intval($params['draw'] ?? 1),
+            "recordsTotal" => $totalRecords,
+            "recordsFiltered" => $totalFiltered,
+            "data" => $data
+        ];
+    }
+
+    /**
+     * Busca uma expedição pelo ID.
+     * @param int $id O ID da expedição.
+     * @return array|false Os dados da expedição ou false se não encontrada.
+     */
+    public function find(int $id)
+    {
+        $sql = "SELECT * FROM {$this->table} WHERE id = :id";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':id' => $id]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Atualiza um registro de expedição existente.
+     * @param int $id ID da expedição.
+     * @param array $data Dados para atualização.
+     * @param int $userId ID do usuário logado (para auditoria).
+     * @return bool Sucesso ou falha.
+     */
+    public function update(int $id, array $data, int $userId): bool
+    {
+        $this->pdo->beginTransaction();
+        $dadosAntigos = $this->find($id);
+
+        try {
+            // A Tabela ENTREGAS_EXPEDICAO usa: previsao_id, numero_carregamento, etc.
+            $sql = "UPDATE {$this->table} SET 
+                previsao_id = ?, numero_carregamento = ?, data_carregamento = ?, veiculo_id = ?, 
+                motorista_principal_id = ?, motorista_reserva_id = ?, encarregado_id = ?, 
+                horario_expedicao = ?, quantidade_caixas_prevista = ?, observacao = ?, status_logistica = ?
+                WHERE id = ?";
+
+            $stmt = $this->pdo->prepare($sql);
+            $success = $stmt->execute([
+                $data['exp_previsao_id'] ?? null,
+                $data['exp_numero_carregamento'],
+                $data['exp_data_carregamento'],
+                $data['exp_veiculo_id'],
+                $data['exp_motorista_principal_id'],
+                $data['exp_motorista_reserva_id'] ?? null,
+                $data['exp_encarregado_id'] ?? null, // Incluído encarregado
+                $data['exp_horario_expedicao'] ?? null,
+                $data['exp_quantidade_caixas'] ?? null,
+                $data['exp_observacao'] ?? null,
+                $data['exp_status_logistica'] ?? 'Carregamento pendente', // Permite atualizar status
+                $id
+            ]);
+
+            // LOG DE AUDITORIA: UPDATE
+            if ($success) {
+                $this->logger->log('UPDATE', $this->table, $id, $dadosAntigos, $data, $userId);
+            }
+
+            $this->pdo->commit();
+            return $success;
+        } catch (\PDOException $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Cancela/Deleta uma expedição.
+     * NOTA: É mais seguro apenas cancelar (mudar o status) se já houve atividade (auditoria/custos).
+     * Para este projeto, faremos DELETE, mas lançamos exceção se houver custos ou registros.
+     * @param int $id ID da expedição.
+     * @param int $userId ID do usuário logado (para auditoria).
+     * @return bool Sucesso ou falha.
+     */
+    public function delete(int $id, int $userId): bool
+    {
+        $this->pdo->beginTransaction();
+        $dadosAntigos = $this->find($id);
+
+        try {
+            // 1. VERIFICAÇÃO DE DEPENDÊNCIA
+            // Se houver registros em CUSTOS_ENTREGA, REGISTROS_FROTA ou ITENS_CARREGAMENTO_CONFIRMACAO
+            // o DELETE CASCADE não é suficiente para o log, ou a exclusão deve ser impedida.
+            // Aqui, confiamos que as Foreign Keys com ON DELETE RESTRICT (se houver) ou SET NULL
+            // lidarão com isso, mas vamos verificar se há custos registrados (que exigem RESTRICT).
+
+            // Simplesmente tentamos o DELETE, e o tratamento de FK fica no Controller (Exceção 23000)
+            $sql = "DELETE FROM {$this->table} WHERE id = ?";
+            $stmt = $this->pdo->prepare($sql);
+            $success = $stmt->execute([$id]);
+
+            // 2. Log de Auditoria
+            if ($success) {
+                $this->logger->log('DELETE', $this->table, $id, $dadosAntigos, null, $userId);
+            }
+
+            $this->pdo->commit();
+            return $success;
+        } catch (\PDOException $e) {
+            $this->pdo->rollBack();
+            throw $e; // Lança para o Controller
+        }
     }
 }

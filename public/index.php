@@ -21,6 +21,8 @@ require_once ROOT_PATH . '/app/Controllers/EntidadeController.php';
 require_once ROOT_PATH . '/app/Controllers/ManutencaoController.php';
 require_once ROOT_PATH . '/app/Controllers/VeiculoController.php';
 require_once ROOT_PATH . '/app/Controllers/FuncionarioController.php';
+require_once ROOT_PATH . '/app/Controllers/PedidoController.php';
+require_once ROOT_PATH . '/app/Controllers/ExpedicaoController.php';
 
 // 3. Definição do Roteamento
 $route = $_GET['route'] ?? 'home';
@@ -84,8 +86,8 @@ $routes = [
     // Rotas de Ações CRUD para Endereços Adicionais
     'entidades/enderecos/listar' => ['EntidadeController', 'listarEnderecosAdicionais'],
     'entidades/enderecos/salvar' => ['EntidadeController', 'salvarEnderecoAdicional'],
-    'entidades/enderecos/get'    => ['EntidadeController', 'getEnderecoAdicional'],  
-    'entidades/enderecos/deletar' => ['EntidadeController', 'deleteEnderecoAdicional'], 
+    'entidades/enderecos/get'    => ['EntidadeController', 'getEnderecoAdicional'],
+    'entidades/enderecos/deletar' => ['EntidadeController', 'deleteEnderecoAdicional'],
 
     // Rotas de Funcionários
     'usuarios'          => ['FuncionarioController', 'index'],
@@ -98,6 +100,10 @@ $routes = [
     'pedidos'           => ['PedidoController', 'index'],
     'pedidos/listar'    => ['PedidoController', 'listarPedidos'],
     'pedidos/salvar'    => ['PedidoController', 'salvarPedido'],
+    'pedidos/clientes-options' => ['PedidoController', 'getClientesOptions'],
+    'pedidos/get'       => ['PedidoController', 'getPedido'],
+    'pedidos/deletar'   => ['PedidoController', 'deletePedido'],
+    'pedidos/next-os'   => ['PedidoController', 'getNextOSNumber'],
 
     // Rotas de Logística/Expedição
     'logistica'                 => ['ExpedicaoController', 'index'],
@@ -105,6 +111,9 @@ $routes = [
     'expedicao/salvar'          => ['ExpedicaoController', 'salvarExpedicao'],
     'expedicao/pessoal-options' => ['ExpedicaoController', 'getPessoalOptions'],
     'expedicao/next-carga-number' => ['ExpedicaoController', 'getNextCargaNumber'],
+    'expedicao/get'         => ['ExpedicaoController', 'getExpedicao'],
+    'expedicao/deletar'     => ['ExpedicaoController', 'deleteExpedicao'],
+    'expedicao/pedidos-pendentes' => ['ExpedicaoController', 'getPedidosPendentesOptions'],
 
     // Rotas de Relatórios
     'relatorios'                => ['RelatorioController', 'index'],
