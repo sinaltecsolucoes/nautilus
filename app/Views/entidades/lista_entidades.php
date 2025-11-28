@@ -29,7 +29,7 @@ if (strtolower($pageType) === 'fornecedor') {
     data-base-url="<?php echo BASE_URL; ?>"
     data-csrf-token="<?php echo htmlspecialchars($data['csrf_token']); ?>"
     style="display: none;">
-</div>  
+</div>
 
 <div class="card shadow mb-4">
     <div class="card-header py-3 d-flex justify-content-between align-items-center">
@@ -64,25 +64,28 @@ if (strtolower($pageType) === 'fornecedor') {
                 <h5 class="modal-title" id="modal-entidade-label">Adicionar <?php echo $singular; ?></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
+
+
             <div class="modal-body">
-                <form id="form-entidade">
-                    <input type="hidden" id="entidade-id" name="ent_codigo">
-                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($data['csrf_token']); ?>">
 
-                    <ul class="nav nav-tabs" id="myTab" role="tablist">
-                        <li class="nav-item">
-                            <a class="nav-link active" id="dados-tab" data-bs-toggle="tab" href="#dados" role="tab" aria-controls="dados" aria-selected="true">Dados Principais</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link disabled" id="endereco-adicional-tab" data-bs-toggle="tab" href="#endereco-adicional-panel" role="tab" aria-controls="endereco-adicional-panel" aria-selected="false">Endereços Adicionais</a>
-                        </li>
-                    </ul>
+                <ul class="nav nav-tabs" id="myTab" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active" id="dados-tab" data-bs-toggle="tab" href="#dados" role="tab" aria-controls="dados" aria-selected="true">Dados Principais</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link disabled" id="endereco-adicional-tab" data-bs-toggle="tab" href="#endereco-adicional-panel" role="tab" aria-controls="endereco-adicional-panel" aria-selected="false">Endereços Adicionais</a>
+                    </li>
+                </ul>
 
-                    <div class="tab-content" id="myTabContent">
-                        <div class="tab-pane fade show active" id="dados" role="tabpanel" aria-labelledby="dados-tab">
-                            <div class="row mt-3">
-                                <input type="hidden" name="tipo" id="ent_tipo" value="<?php echo ucfirst($pageType); ?>">
+                <div class="tab-content" id="myTabContent">
 
+                    <div class="tab-pane fade show active" id="dados" role="tabpanel" aria-labelledby="dados-tab">
+                        <form id="form-entidade" class="mt-3">
+                            <input type="hidden" id="entidade-id" name="ent_codigo">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($data['csrf_token']); ?>">
+                            <input type="hidden" name="tipo" id="ent_tipo" value="<?php echo ucfirst($pageType); ?>">
+
+                            <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label for="tipo_pessoa" class="form-label">Tipo de Pessoa (*)</label>
                                     <select class="form-select" id="tipo_pessoa" name="tipo_pessoa" required>
@@ -103,10 +106,11 @@ if (strtolower($pageType) === 'fornecedor') {
                                     <label for="cnpj_cpf" class="form-label">CNPJ/CPF (*)</label>
                                     <div class="input-group">
                                         <input type="text" class="form-control" id="cnpj_cpf" name="cnpj_cpf" required>
-                                        <button class="btn btn-outline-secondary" type="button" id="btn-buscar-cnpj" title="Buscar dados da Receita Federal (CNPJ/CPF)">
+                                        <button class="btn btn-outline-secondary" type="button" id="btn-buscar-cnpj" title="Buscar dados (Receita)">
                                             <i class="fas fa-search"></i>
                                         </button>
                                     </div>
+                                    <small id="api-debug-info" class="text-muted" style="font-size: 0.8em;"></small>
                                 </div>
 
                                 <div class="col-md-6 mb-3">
@@ -131,170 +135,128 @@ if (strtolower($pageType) === 'fornecedor') {
                             </div>
 
                             <hr>
-
-                            <h5 class="modal-title" id="modal-entidade-label">Endereço Principal</h5>
+                            <h5 class="modal-title">Endereço Principal</h5>
 
                             <div class="row mt-3">
                                 <div class="col-md-4 mb-3">
                                     <label for="end_cep" class="form-label">CEP</label>
-                                    <div class="input-group">
-                                        <input
-                                            type="text"
-                                            class="form-control"
-                                            id="end_cep"
-                                            name="end_cep"
-                                            maxlength="9"
-                                            disabled>
-                                    </div>
+                                    <input type="text" class="form-control" id="end_cep" name="end_cep" maxlength="9">
                                 </div>
 
                                 <div class="col-md-8 mb-3">
                                     <label for="end_logradouro" class="form-label">Logradouro</label>
-                                    <input
-                                        type="text"
-                                        class="form-control"
-                                        id="end_logradouro"
-                                        name="end_logradouro"
-                                        disabled>
+                                    <input type="text" class="form-control" id="end_logradouro" name="end_logradouro">
                                 </div>
 
                                 <div class="col-md-4 mb-3">
                                     <label for="end_numero" class="form-label">Número (*)</label>
-                                    <input
-                                        type="text"
-                                        class="form-control"
-                                        id="end_numero"
-                                        name="end_numero"
-                                        disabled>
+                                    <input type="text" class="form-control" id="end_numero" name="end_numero">
                                 </div>
 
                                 <div class="col-md-8 mb-3">
                                     <label for="end_complemento" class="form-label">Complemento</label>
-                                    <input
-                                        type="text"
-                                        class="form-control"
-                                        id="end_complemento"
-                                        name="end_complemento"
-                                        disabled>
+                                    <input type="text" class="form-control" id="end_complemento" name="end_complemento">
                                 </div>
 
                                 <div class="col-md-6 mb-3">
-                                    <label for="end_bairro" class="form-label">Bairro (*)</label>
-                                    <input
-                                        type="text"
-                                        class="form-control"
-                                        id="end_bairro"
-                                        name="end_bairro"
-                                        disabled>
+                                    <label for="end_bairro" class="form-label">Bairro</label>
+                                    <input type="text" class="form-control" id="end_bairro" name="end_bairro">
                                 </div>
 
                                 <div class="col-md-4 mb-3">
-                                    <label for="end_cidade" class="form-label">Cidade (*)</label>
-                                    <input
-                                        type="text"
-                                        class="form-control"
-                                        id="end_cidade"
-                                        name="end_cidade"
-                                        disabled>
+                                    <label for="end_cidade" class="form-label">Cidade</label>
+                                    <input type="text" class="form-control" id="end_cidade" name="end_cidade">
                                 </div>
 
                                 <div class="col-md-2 mb-3">
-                                    <label for="end_uf" class="form-label">UF (*)</label>
-                                    <input
-                                        type="text"
-                                        class="form-control"
-                                        id="end_uf"
-                                        name="end_uf"
-                                        maxlength="2"
-                                        disabled>
+                                    <label for="end_uf" class="form-label">UF</label>
+                                    <input type="text" class="form-control" id="end_uf" name="end_uf" maxlength="2">
                                 </div>
                             </div>
-                        </div>
-
-                        <div class="tab-pane fade" id="endereco-adicional-panel" role="tabpanel" aria-labelledby="endereco-adicional-tab">
-                            <div class="row mt-3">
-                                <form id="form-endereco-adicional" class="row">
-                                    <input type="hidden" name="entidade_id" id="end_adic_entidade_id">
-
-                                    <div class="col-md-6 mb-3">
-                                        <label for="end_adic_tipo" class="form-label">Tipo de Endereço (*)</label>
-                                        <select class="form-select" id="end_adic_tipo" name="tipo_endereco" required>
-                                            <option value="Comercial">Comercial</option>
-                                            <option value="Entrega">Entrega</option>
-                                            <option value="Correspondencia">Correspondência</option>
-                                            <option value="Filial">Filial</option>
-                                            <option value="Cobranca">Cobrança</option>
-                                        </select>
-                                    </div>
-
-                                    <div class="col-md-6 mb-3">
-                                        <label for="end_adic_cep" class="form-label">CEP (*)</label>
-                                        <div class="input-group">
-                                            <input type="text" class="form-control" id="end_adic_cep" name="cep" maxlength="9" required>
-                                            <button class="btn btn-outline-secondary" type="button" id="btn-buscar-cep-adic" title="Buscar CEP (ViaCEP)">
-                                                <i class="fas fa-search"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div class="col-md-8 mb-3">
-                                        <label for="end_adic_logradouro" class="form-label">Logradouro (*)</label>
-                                        <input type="text" class="form-control" id="end_adic_logradouro" name="logradouro" required>
-                                    </div>
-                                    <div class="col-md-4 mb-3">
-                                        <label for="end_adic_numero" class="form-label">Número (*)</label>
-                                        <input type="text" class="form-control" id="end_adic_numero" name="numero" required>
-                                    </div>
-
-                                    <div class="col-md-6 mb-3">
-                                        <label for="end_adic_complemento" class="form-label">Complemento</label>
-                                        <input type="text" class="form-control" id="end_adic_complemento" name="complemento">
-                                    </div>
-
-                                    <div class="col-md-6 mb-3">
-                                        <label for="end_adic_bairro" class="form-label">Bairro (*)</label>
-                                        <input type="text" class="form-control" id="end_adic_bairro" name="bairro" required>
-                                    </div>
-
-                                    <div class="col-md-6 mb-3">
-                                        <label for="end_adic_cidade" class="form-label">Cidade (*)</label>
-                                        <input type="text" class="form-control" id="end_adic_cidade" name="cidade" required>
-                                    </div>
-                                    <div class="col-md-2 mb-3">
-                                        <label for="end_adic_uf" class="form-label">UF (*)</label>
-                                        <input type="text" class="form-control" id="end_adic_uf" name="uf" maxlength="2" required>
-                                    </div>
-
-                                    <div class="col-md-4 mb-3 text-end">
-                                        <label class="form-label d-block">&nbsp;</label>
-                                        <button type="submit" class="btn btn-success"><i class="fas fa-save"></i> Adicionar Endereço</button>
-                                    </div>
-                                </form>
-                            </div>
-
-                            <hr>
-
-                            <h5>Endereços Registrados</h5>
-                            <div class="table-responsive">
-                                <table class="table table-striped" id="tabela-enderecos-adicionais" width="100%" cellspacing="0">
-                                    <thead>
-                                        <tr>
-                                            <th>Tipo</th>
-                                            <th>Logradouro, Número</th>
-                                            <th>Bairro, Cidade/UF</th>
-                                            <th>Ações</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-
+                        </form>
                     </div>
-                </form>
+
+                    <div class="tab-pane fade" id="endereco-adicional-panel" role="tabpanel" aria-labelledby="endereco-adicional-tab">
+                        <div class="row mt-3">
+                            <form id="form-endereco-adicional" class="row">
+                                <input type="hidden" name="entidade_id" id="end_adic_entidade_id">
+
+                                <div class="col-md-6 mb-3">
+                                    <label for="end_adic_tipo" class="form-label">Tipo de Endereço (*)</label>
+                                    <select class="form-select" id="end_adic_tipo" name="tipo_endereco" required>
+                                        <option value="Comercial">Comercial</option>
+                                        <option value="Entrega">Entrega</option>
+                                        <option value="Correspondencia">Correspondência</option>
+                                        <option value="Filial">Filial</option>
+                                        <option value="Cobranca">Cobrança</option>
+                                    </select>
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label for="end_adic_cep" class="form-label">CEP (*)</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="end_adic_cep" name="cep" maxlength="9" required>
+                                        <button class="btn btn-outline-secondary" type="button" id="btn-buscar-cep-adic">
+                                            <i class="fas fa-search"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-8 mb-3">
+                                    <label for="end_adic_logradouro" class="form-label">Logradouro (*)</label>
+                                    <input type="text" class="form-control" id="end_adic_logradouro" name="logradouro" required>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="end_adic_numero" class="form-label">Número (*)</label>
+                                    <input type="text" class="form-control" id="end_adic_numero" name="numero" required>
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label for="end_adic_complemento" class="form-label">Complemento</label>
+                                    <input type="text" class="form-control" id="end_adic_complemento" name="complemento">
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label for="end_adic_bairro" class="form-label">Bairro (*)</label>
+                                    <input type="text" class="form-control" id="end_adic_bairro" name="bairro" required>
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label for="end_adic_cidade" class="form-label">Cidade (*)</label>
+                                    <input type="text" class="form-control" id="end_adic_cidade" name="cidade" required>
+                                </div>
+                                <div class="col-md-2 mb-3">
+                                    <label for="end_adic_uf" class="form-label">UF (*)</label>
+                                    <input type="text" class="form-control" id="end_adic_uf" name="uf" maxlength="2" required>
+                                </div>
+
+                                <div class="col-md-4 mb-3 text-end">
+                                    <label class="form-label d-block">&nbsp;</label>
+                                    <button type="submit" class="btn btn-success"><i class="fas fa-save"></i> Adicionar</button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <hr>
+                        <h5>Endereços Registrados</h5>
+                        <div class="table-responsive">
+                            <table class="table table-striped" id="tabela-enderecos-adicionais" width="100%" cellspacing="0">
+                                <thead>
+                                    <tr>
+                                        <th>Tipo</th>
+                                        <th>Logradouro, Número</th>
+                                        <th>Bairro, Cidade/UF</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
+
+
             <div class="modal-footer">
                 <button type="submit" form="form-entidade" class="btn btn-primary">Salvar</button>
             </div>

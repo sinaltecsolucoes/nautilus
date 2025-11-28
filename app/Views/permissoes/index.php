@@ -1,78 +1,102 @@
-<?php
+<h1 class="h3 mb-4 text-gray-800">Gestão de Permissões (ACL)</h1>
 
-/**
- * VIEW: Gestão de Permissões (ACL/RBAC)
- * Local: app/Views/permissoes/index.php
- * Descrição: Matriz interativa para o Administrador ativar/inativar permissões.
- * * Variáveis disponíveis:
- * $data['permissoes'] - Matriz de permissões [modulo][cargo][acao]
- * $data['cargos'] - Lista de cargos (para as colunas)
- * $data['acoes'] - Lista de ações (para a exibição na tabela)
- */
-$permissoes = $data['permissoes'] ?? [];
-$cargos = $data['cargos'] ?? [];
-$acoes_ordem = $data['acoes'] ?? ['Criar', 'Ler', 'Alterar', 'Deletar'];
+<div id="permissoes-save-url" data-url="<?php echo BASE_URL; ?>/permissoes/salvar"></div>
 
-// Remove o Administrador da lista de cargos exibidos, pois ele tem acesso TRUE por padrão
-$cargos_exibicao = array_filter($cargos, fn($cargo) => $cargo !== 'Administrador');
+<div class="card shadow mb-4">
+    <div class="card-header py-3 bg-primary text-white d-flex justify-content-between align-items-center">
+        <h6 class="m-0 font-weight-bold"><i class="fas fa-user-shield"></i> Matriz de Acesso</h6>
+        <button type="button" id="btn-salvar-permissoes" class="btn btn-light text-primary fw-bold">
+            <i class="fas fa-save"></i> Gravar Alterações
+        </button>
+    </div>
+    <div class="card-body">
 
-// Definição da URL para a chamada AJAX de atualização
-$update_url = BASE_URL . '/permissoes-update';
-?>
+        <div class="alert alert-info py-2 small">
+            <i class="fas fa-info-circle"></i> O cargo <strong>Administrador</strong> possui acesso total irrestrito e não é listado abaixo.
+        </div>
 
-<div class="permissoes-container">
-    <div id="permissoes-update-url" data-url="<?php echo $update_url; ?>" style="display: none;"></div>
-    <div id="status-message" style="display: none; padding: 10px; margin-bottom: 15px; border-radius: 5px;"></div>
+        <?php
+        // CORREÇÃO 1: Verifica se existem MÓDULOS definidos, e não se existe algo no banco
+        if (!empty($data['modulos'])):
+        ?>
 
-    <p class="description-text">Utilize a matriz abaixo para conceder ou revogar permissões aos diferentes cargos do sistema. Lembre-se que o cargo **Administrador** possui acesso total por padrão e não pode ser alterado.</p>
+            <?php
+            // CORREÇÃO 2: Garante que a lista de cargos exista
+            $cargosExibidos = array_filter($data['cargos'] ?? [], fn($c) => $c !== 'Administrador');
 
-    <table class="permissoes-table">
-        <thead>
-            <tr>
-                <th rowspan="2">Módulo / Ação</th>
-                <?php foreach ($cargos_exibicao as $cargo): ?>
-                    <th colspan="<?php echo count($acoes_ordem); ?>" class="cargo-header"><?php echo htmlspecialchars($cargo); ?></th>
-                <?php endforeach; ?>
-            </tr>
-            <tr>
-                <?php foreach ($cargos_exibicao as $cargo): ?>
-                    <?php foreach ($acoes_ordem as $acao): ?>
-                        <th class="action-header"><?php echo substr($acao, 0, 1); ?></th> <?php endforeach; ?>
-                <?php endforeach; ?>
-            </tr>
-        </thead>
-        <tbody>
-            <?php foreach ($permissoes as $modulo => $regras_modulo): ?>
-                <tr class="module-row">
-                    <td class="module-name-cell"><?php echo htmlspecialchars($modulo); ?></td>
+            // Fallback caso não venha cargos (evita tela branca)
+            if (empty($cargosExibidos)) {
+                echo '<div class="alert alert-warning">Nenhum cargo encontrado para configurar.</div>';
+            }
+            ?>
 
-                    <?php foreach ($cargos_exibicao as $cargo): ?>
-                        <?php foreach ($acoes_ordem as $acao):
-                            // Verifica se a regra existe para este Cargo/Módulo/Ação
-                            $regra = $regras_modulo[$cargo][$acao] ?? null;
-                            $regra_id = $regra['id'] ?? null;
-                            $permitido = $regra['permitido'] ?? false;
-                        ?>
-                            <td class="switch-cell">
-                                <?php if ($regra_id): ?>
-                                    <label class="switch">
-                                        <input type="checkbox"
-                                            class="permission-switch"
-                                            data-id="<?php echo $regra_id; ?>"
-                                            data-modulo="<?php echo htmlspecialchars($modulo); ?>"
-                                            data-cargo="<?php echo htmlspecialchars($cargo); ?>"
-                                            data-acao="<?php echo htmlspecialchars($acao); ?>"
-                                            <?php echo $permitido ? 'checked' : ''; ?>>
-                                        <span class="slider round"></span>
-                                    </label>
-                                <?php else: ?>
-                                    <span title="Regra não definida. Execute o script de setup.">--</span>
-                                <?php endif; ?>
-                            </td>
-                        <?php endforeach; ?>
-                    <?php endforeach; ?>
-                </tr>
-            <?php endforeach; ?>
-        </tbody>
-    </table>
+            <div class="table-responsive">
+                <form id="form-matriz-permissoes">
+                    <table class="table table-bordered table-hover text-center align-middle" width="100%" cellspacing="0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="text-start" style="width: 25%;">Módulo / Ação</th>
+                                <?php foreach ($cargosExibidos as $cargo): ?>
+                                    <th><?php echo $cargo; ?></th>
+                                <?php endforeach; ?>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php
+                            // Loop pelos Módulos (Vem do Controller->index->$modulos)
+                            foreach ($data['modulos'] as $moduloNome => $acoesPossiveis):
+                            ?>
+                                <tr class="table-secondary text-start">
+                                    <td colspan="<?php echo count($cargosExibidos) + 1; ?>" class="fw-bold text-uppercase py-2">
+                                        <i class="fas fa-cube me-2"></i> <?php echo $moduloNome; ?>
+                                    </td>
+                                </tr>
+
+                                <?php foreach ($acoesPossiveis as $acao): ?>
+                                    <tr>
+                                        <td class="text-start ps-4">
+                                            <?php
+                                            $icon = match ($acao) {
+                                                'Criar' => 'fa-plus text-success',
+                                                'Ler' => 'fa-eye text-primary',
+                                                'Alterar' => 'fa-edit text-warning',
+                                                'Deletar' => 'fa-trash text-danger',
+                                                default => 'fa-circle'
+                                            };
+                                            ?>
+                                            <i class="fas <?php echo $icon; ?> me-2"></i> <?php echo $acao; ?>
+                                        </td>
+
+                                        <?php foreach ($cargosExibidos as $cargo):
+                                            // CORREÇÃO 3: Usa a variável correta 'permissoesAtuais' vinda do controller
+                                            // Se não existir registro no banco, assume FALSE (desmarcado)
+                                            $permitido = $data['permissoesAtuais'][$cargo][$moduloNome][$acao] ?? false;
+                                        ?>
+                                            <td>
+                                                <div class="form-check form-switch d-flex justify-content-center">
+                                                    <input class="form-check-input permission-checkbox"
+                                                        type="checkbox"
+                                                        style="cursor: pointer; transform: scale(1.3);"
+                                                        data-cargo="<?php echo $cargo; ?>"
+                                                        data-modulo="<?php echo $moduloNome; ?>"
+                                                        data-acao="<?php echo $acao; ?>"
+                                                        <?php echo $permitido ? 'checked' : ''; ?>>
+                                                </div>
+                                            </td>
+                                        <?php endforeach; ?>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </form>
+            </div>
+
+        <?php else: ?>
+            <div class="alert alert-danger">Erro: Lista de módulos não definida no Controller.</div>
+        <?php endif; ?>
+
+    </div>
 </div>
+
+<script src="<?php echo BASE_URL; ?>/assets/js/permissoes.js"></script>

@@ -1,100 +1,123 @@
 <?php
+// app/Controllers/PermissaoController.php
 
-/**
- * CLASSE CONTROLLER: PermissaoController
- * Local: app/Controllers/PermissaoController.php
- * Descrição: Gerencia a interface e a lógica de atualização das permissões (ACL/RBAC).
- */
-
-// Inclui Models e Services
 require_once ROOT_PATH . '/app/Models/PermissaoModel.php';
-require_once ROOT_PATH . '/app/Services/PermissaoService.php'; // Para verificação de permissão
-require_once ROOT_PATH . '/app/Controllers/AuthController.php'; // Para a segurança
-
+require_once ROOT_PATH . '/app/Models/FuncionarioModel.php'; // Para pegar os cargos
+require_once ROOT_PATH . '/app/Services/PermissaoService.php';
 
 class PermissaoController
 {
     private $permissaoModel;
+    private $funcionarioModel;
 
     public function __construct()
     {
+        if (session_status() == PHP_SESSION_NONE) session_start();
         $this->permissaoModel = new PermissaoModel();
-
-        // 1. SEGURANÇA: Inicia a sessão para verificar o cargo
-        if (session_status() == PHP_SESSION_NONE) {
-            session_start();
-        }
+        $this->funcionarioModel = new FuncionarioModel();
     }
 
-    /**
-     * Exibe a matriz de gestão de permissões.
-     */
     public function index()
     {
-        // VERIFICAÇÃO DE PERMISSÃO (ACL/RBAC)
-        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        $cargoLogado = $_SESSION['user_cargo'] ?? 'Visitante';
 
-        // APENAS Administradores podem Ler este módulo (Gestão de Permissões é sensível)
-        if (!PermissaoService::checarPermissao($cargo, 'Funcionarios', 'Alterar')) {
-            // Usamos 'Funcionarios'/'Alterar' como regra inicial para gestão de usuários,
-            // mas futuramente podemos ter um módulo 'Permissoes'
-
-            // Se negado, redireciona ou exibe erro
-            http_response_code(403); // Acesso Proibido
-            die("Acesso Negado: Você não tem permissão para gerenciar as permissões do sistema.");
+        // Apenas Admin ou quem tiver permissão explicita pode acessar
+        if (!PermissaoService::checarPermissao($cargoLogado, 'Permissoes', 'Ler')) {
+            http_response_code(403);
+            die("Acesso Negado.");
         }
 
-        // Obtém todos os dados estruturados do Model
-        $permissoes = $this->permissaoModel->getAllPermissoes();
-
-        $data = [
-            'title' => 'Gestão de Permissões (ACL)',
-            'permissoes' => $permissoes,
-            // Extrai a lista única de Cargos e Ações para o cabeçalho da tabela na View
-            'cargos' => array_keys(current($permissoes)['Entidades'] ?? []),
-            'acoes'  => ['Criar', 'Ler', 'Alterar', 'Deletar'] // Ordem fixada
+        // 1. Definição dos Módulos e Ações do Sistema (Catálogo)
+        $modulos = [
+            'Dashboard'      => ['Ler'], // Dashboard geralmente é só Ler
+            'Entidades'      => ['Criar', 'Ler', 'Alterar', 'Deletar'],
+            'Funcionarios'   => ['Criar', 'Ler', 'Alterar', 'Deletar'],
+            'Abastecimentos' => ['Criar', 'Ler', 'Alterar', 'Deletar'], // Nosso novo módulo
+            'Permissoes'     => ['Ler', 'Alterar'], // Permissão para mexer nas permissões
+            'Relatorios'     => ['Ler']
         ];
 
-        // Processo de injeção da View no Layout
+        // 2. Busca os Cargos Disponíveis no sistema (via Enum ou Model)
+        $cargos = $this->funcionarioModel->getCargosOptions();
+        // Remove 'Administrador' pois ele tem acesso total via código
+        $cargos = array_filter($cargos, fn($c) => $c !== 'Administrador');
+
+        // 3. Busca todas as permissões salvas no banco
+        // Formato esperado do retorno: ['Gerente' => ['Entidades' => ['Ler' => true]]]
+        $permissoesAtuais = $this->permissaoModel->getAllPermissoesMatriz();
+
+        $data = [
+            'title' => 'Matriz de Permissões',
+            'modulos' => $modulos,
+            'cargos' => $cargos,
+            'permissoesAtuais' => $permissoesAtuais,
+            'csrf_token' => $_SESSION['csrf_token'] ?? bin2hex(random_bytes(32)),
+            'pageScript' => 'permissoes'
+        ];
+
+        $_SESSION['csrf_token'] = $data['csrf_token'];
+
         ob_start();
-        require_once __DIR__ . '/../Views/permissoes/index.php'; // A View será criada a seguir
+        require_once ROOT_PATH . '/app/Views/permissoes/index.php';
         $content = ob_get_clean();
-        require_once __DIR__ . '/../Views/layout.php';
+        require_once ROOT_PATH . '/app/Views/layout.php';
     }
 
-    /**
-     * Processa a requisição AJAX para atualizar o status de uma permissão.
-     */
+    // Método AJAX para salvar uma única permissão (Switch)
     public function update()
     {
-        // Aplica o mesmo check de segurança
-        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
-        if (!PermissaoService::checarPermissao($cargo, 'Funcionarios', 'Alterar')) {
-            http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Acesso Negado.']);
-            exit;
-        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') exit;
 
-        // Espera-se dados via POST/JSON: { id: 1, status: true/false }
-        $id = $_POST['id'] ?? null;
-        $status = $_POST['status'] ?? null;
+        $cargo = $_POST['cargo'] ?? '';
+        $modulo = $_POST['modulo'] ?? '';
+        $acao = $_POST['acao'] ?? '';
+        $status = $_POST['status'] === 'true' ? 1 : 0;
 
-        if (is_null($id) || is_null($status)) {
-            http_response_code(400); // Requisição inválida
-            echo json_encode(['success' => false, 'message' => 'Dados incompletos.']);
-            exit;
-        }
-
-        // Converte o status (true/false) para 1/0
-        $new_status = $status === 'true' || $status === '1';
-
-        // Atualiza o banco de dados
-        $result = $this->permissaoModel->updatePermissaoStatus($id, $new_status);
-
-        if ($result) {
-            echo json_encode(['success' => true, 'message' => 'Permissão atualizada com sucesso.']);
+        if ($this->permissaoModel->updatePermissao($cargo, $modulo, $acao, $status)) {
+            echo json_encode(['success' => true, 'message' => 'Permissão atualizada']);
         } else {
-            echo json_encode(['success' => false, 'message' => 'Falha ao atualizar a permissão no DB.']);
+            echo json_encode(['success' => false, 'message' => 'Erro ao salvar']);
+        }
+    }
+    
+    /**
+     * Salva a matriz completa de permissões (Lote).
+     */
+    public function salvar()
+    {
+        // Verifica se é POST
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') exit;
+
+        // Lê o JSON enviado pelo JavaScript
+        $input = json_decode(file_get_contents('php://input'), true);
+        $listaPermissoes = $input['permissoes'] ?? [];
+
+        if (empty($listaPermissoes)) {
+            echo json_encode(['success' => false, 'message' => 'Nenhum dado recebido.']);
+            exit;
+        }
+
+        $erros = 0;
+
+        // Inicia uma transação para garantir integridade (opcional mas recomendado)
+        // Como o PermissaoModel não expõe beginTransaction direto aqui, faremos o loop simples.
+
+        foreach ($listaPermissoes as $p) {
+            $cargo = $p['cargo'];
+            $modulo = $p['modulo'];
+            $acao = $p['acao'];
+            $status = (int)$p['status'];
+
+            // Chama o Model para atualizar (Upsert)
+            if (!$this->permissaoModel->updatePermissao($cargo, $modulo, $acao, $status)) {
+                $erros++;
+            }
+        }
+
+        if ($erros === 0) {
+            echo json_encode(['success' => true, 'message' => 'Todas as permissões foram atualizadas!']);
+        } else {
+            echo json_encode(['success' => true, 'message' => 'Salvo com avisos. Alguns registros podem ter falhado.']);
         }
     }
 }

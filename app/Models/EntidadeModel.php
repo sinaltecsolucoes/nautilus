@@ -6,15 +6,14 @@
  * Descrição: Gerencia as operações de CRUD nas tabelas ENTIDADES e ENDERECOS.
  */
 
-// Inclui a classe de conexão PDO
 require_once __DIR__ . '/Database.php';
 require_once ROOT_PATH . '/app/Services/AuditLoggerService.php';
 
 class EntidadeModel
 {
     private $pdo;
-    private $tableEntidade = 'ENTIDADES';
-    private $tableEndereco = 'ENDERECOS';
+    private $table = 'ENTIDADES';
+    private $tableEnd = 'ENDERECOS';
     private $logger;
 
     public function __construct()
@@ -24,389 +23,200 @@ class EntidadeModel
     }
 
     /**
-     * Cria uma nova entidade (Cliente/Fornecedor/Transportadora) e seus endereços.
-     * @param array $dataEntidade Dados da entidade.
-     * @param array $dataEnderecos Array de endereços.
-     * @return int|false O ID da nova entidade ou false em caso de erro.
+     * Busca dados para o DataTables (Server-Side).
      */
-    public function create($dataEntidade, $dataEnderecos)
+    public function findAllForDataTable(array $params): array
+    {
+        $start = $params['start'] ?? 0;
+        $length = $params['length'] ?? 10;
+        $searchValue = $params['search']['value'] ?? '';
+        $tipo = $params['tipo_entidade'] ?? 'cliente'; // Filtro extra
+
+        $where = "WHERE 1=1 ";
+        $bindParams = [];
+
+        // Filtro por Tipo (Cliente, Fornecedor, Transportadora)
+        // A lógica do sistema usa 'Cliente', 'Fornecedor', 'Transportadora' no banco
+        if (!empty($tipo)) {
+            $tipoDb = ucfirst($tipo); // cliente -> Cliente
+            // Se for fornecedor, pode ser 'Fornecedor' ou 'Cliente e Fornecedor'
+            if ($tipoDb === 'Fornecedor') {
+                $where .= "AND (tipo = 'Fornecedor' OR tipo = 'Cliente e Fornecedor') ";
+            } elseif ($tipoDb === 'Cliente') {
+                $where .= "AND (tipo = 'Cliente' OR tipo = 'Cliente e Fornecedor') ";
+            } else {
+                $where .= "AND tipo = :tipo ";
+                $bindParams[':tipo'] = $tipoDb;
+            }
+        }
+
+        if (!empty($searchValue)) {
+            $where .= "AND (razao_social LIKE :s1 OR nome_fantasia LIKE :s1 OR cnpj_cpf LIKE :s2 OR codigo_interno LIKE :s3) ";
+            $bindParams[':s1'] = "%" . $searchValue . "%";
+            $bindParams[':s2'] = "%" . $searchValue . "%";
+            $bindParams[':s3'] = "%" . $searchValue . "%";
+        }
+
+        // Totais
+        $sqlTotal = "SELECT COUNT(id) FROM {$this->table}";
+        $totalRecords = $this->pdo->query($sqlTotal)->fetchColumn();
+
+        $sqlFiltered = "SELECT COUNT(id) FROM {$this->table} " . $where;
+        $stmtFiltered = $this->pdo->prepare($sqlFiltered);
+        $stmtFiltered->execute($bindParams);
+        $totalFiltered = $stmtFiltered->fetchColumn();
+
+        // Dados (Faz join com endereço principal para exibir na lista)
+        $sqlData = "SELECT 
+                        ent.id, ent.situacao, ent.tipo, ent.razao_social, ent.nome_fantasia, ent.cnpj_cpf, ent.codigo_interno,
+                        end.logradouro, end.numero, end.cidade, end.uf
+                    FROM {$this->table} ent
+                    LEFT JOIN {$this->tableEnd} end ON ent.id = end.entidade_id AND end.tipo_endereco = 'Principal'
+                    {$where} 
+                    ORDER BY ent.razao_social ASC 
+                    LIMIT :start, :length";
+
+        $stmtData = $this->pdo->prepare($sqlData);
+        foreach ($bindParams as $k => $v) $stmtData->bindValue($k, $v);
+        $stmtData->bindValue(':start', (int)$start, PDO::PARAM_INT);
+        $stmtData->bindValue(':length', (int)$length, PDO::PARAM_INT);
+        $stmtData->execute();
+
+        return [
+            "draw" => intval($params['draw'] ?? 1),
+            "recordsTotal" => $totalRecords,
+            "recordsFiltered" => $totalFiltered,
+            "data" => $stmtData->fetchAll(PDO::FETCH_ASSOC)
+        ];
+    }
+
+    /**
+     * Cria uma nova entidade e seu endereço principal.
+     */
+    public function create(array $data, int $userId): int
     {
         $this->pdo->beginTransaction();
-
         try {
-            // 1. INSERE A ENTIDADE
-            $sqlEntidade = "INSERT INTO {$this->tableEntidade} 
-                (tipo, tipo_pessoa, razao_social, nome_fantasia, codigo_interno, cnpj_cpf, inscricao_estadual_rg, situacao)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+            // 1. Inserir Entidade
+            $sql = "INSERT INTO {$this->table} (tipo, tipo_pessoa, razao_social, nome_fantasia, codigo_interno, cnpj_cpf, inscricao_estadual_rg, situacao)
+                    VALUES (:tipo, :tipo_pessoa, :razao, :nome_fan, :codigo, :doc, :ie, :sit)";
 
-            $stmtEntidade = $this->pdo->prepare($sqlEntidade);
-            $stmtEntidade->execute([
-                $dataEntidade['tipo'],
-                $dataEntidade['tipo_pessoa'],
-                $dataEntidade['razao_social'],
-                $dataEntidade['nome_fantasia'] ?? null,
-                $dataEntidade['codigo_interno'] ?? null,
-                $dataEntidade['cnpj_cpf'],
-                $dataEntidade['inscricao_estadual_rg'] ?? null,
-                $dataEntidade['situacao'] ?? 'Ativo'
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([
+                ':tipo'        => $data['tipo'],
+                ':tipo_pessoa' => $data['tipo_pessoa'],
+                ':razao'       => $data['razao_social'],
+                ':nome_fan'    => $data['nome_fantasia'] ?? null,
+                ':codigo'      => $data['codigo_interno'] ?? null,
+                ':doc'         => $data['cnpj_cpf'],
+                ':ie'          => $data['inscricao_estadual_rg'] ?? null,
+                ':sit'         => $data['situacao'] ?? 'Ativo'
             ]);
 
-            $entidadeId = $this->pdo->lastInsertId();
+            $id = $this->pdo->lastInsertId();
 
-            // LOG DE AUDITORIA: CREATE
-            $this->logger->log(
-                'CREATE',
-                $this->tableEntidade,
-                $entidadeId,
-                null, // Dados Antigos: null
-                $dataEntidade // Dados Novos: $dataEntidade
-            );
-
-            // 2. INSERE OS ENDEREÇOS
-            foreach ($dataEnderecos as $endereco) {
-                $sqlEndereco = "INSERT INTO {$this->tableEndereco} 
-                    (entidade_id, tipo_endereco, cep, logradouro, numero, complemento, bairro, cidade, uf)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-                $stmtEndereco = $this->pdo->prepare($sqlEndereco);
-                $stmtEndereco->execute([
-                    $entidadeId,
-                    $endereco['tipo_endereco'],
-                    $endereco['cep'],
-                    $endereco['logradouro'],
-                    $endereco['numero'],
-                    $endereco['complemento'] ?? null,
-                    $endereco['bairro'],
-                    $endereco['cidade'],
-                    $endereco['uf']
+            // 2. Inserir Endereço Principal
+            if (!empty($data['endereco_principal'])) {
+                $end = $data['endereco_principal'];
+                $sqlEnd = "INSERT INTO {$this->tableEnd} (entidade_id, tipo_endereco, cep, logradouro, numero, complemento, bairro, cidade, uf)
+                           VALUES (?, 'Principal', ?, ?, ?, ?, ?, ?, ?)";
+                $stmtEnd = $this->pdo->prepare($sqlEnd);
+                $stmtEnd->execute([
+                    $id,
+                    $end['cep'],
+                    $end['logradouro'],
+                    $end['numero'],
+                    $end['complemento'] ?? null,
+                    $end['bairro'],
+                    $end['cidade'],
+                    $end['uf']
                 ]);
             }
 
+            // Log
+            $this->logger->log('CREATE', $this->table, $id, null, $data, $userId);
+
             $this->pdo->commit();
-            return $entidadeId;
+            return (int)$id;
         } catch (\PDOException $e) {
             $this->pdo->rollBack();
-            // Em ambiente de produção, logar $e->getMessage()
-            return false;
+            throw $e;
         }
     }
 
     /**
-     * Busca todas as entidades.
-     * @return array Lista de entidades.
+     * Atualiza entidade e endereço principal.
      */
-    public function getAll()
-    {
-        // Regra de ACL será aplicada no Controller
-        $sql = "SELECT id, tipo, tipo_pessoa, razao_social, nome_fantasia, cnpj_cpf, situacao FROM {$this->tableEntidade} ORDER BY razao_social";
-        $stmt = $this->pdo->query($sql);
-        return $stmt->fetchAll();
-    }
-
-    /**
-     * Busca uma entidade e seu endereço principal pelo ID.
-     * Necessário para pré-preencher o formulário de edição (Controller: getEntidade).
-     * @param int $id O ID da entidade.
-     * @return array|false Os dados da entidade ou false se não for encontrada.
-     */
-    public function find(int $id)
-    {
-        // Esta query é complexa, inspirada no seu EntidadeRepository de referência.
-        $sql = "SELECT 
-                    ent.*, 
-                    end.cep AS end_cep, 
-                    end.logradouro AS end_logradouro, 
-                    end.numero AS end_numero, 
-                    end.complemento AS end_complemento, 
-                    end.bairro AS end_bairro, 
-                    end.cidade AS end_cidade, 
-                    end.uf AS end_uf 
-                FROM {$this->tableEntidade} ent 
-                LEFT JOIN {$this->tableEndereco} end 
-                    ON ent.id = end.entidade_id AND end.tipo_endereco = 'Principal' 
-                WHERE ent.id = :id";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':id' => $id]);
-
-        return $stmt->fetch();
-    }
-
-    /**
-     * Atualiza uma entidade existente e seu endereço principal.
-     * Necessário para a lógica de edição (Controller: salvarEntidade - com ID).
-     * @param int $id O ID da entidade a ser atualizada.
-     * @param array $dataEntidade Dados da entidade.
-     * @param array $dataEnderecos Array com o endereço principal.
-     * @param int $userId ID do usuário logado (para auditoria).
-     * @return bool Sucesso ou falha na transação.
-     */
-    public function update(int $id, $dataEntidade, $dataEnderecos, int $userId)
+    public function update(int $id, array $data, int $userId): bool
     {
         $this->pdo->beginTransaction();
-
-        // Inicializa $dadosAntigos como null.
-        $dadosAntigos = null;
+        $dadosAntigos = $this->find($id);
 
         try {
-            // PASSO DE AUDITORIA 1: Busca o registro ANTES da alteração
-            // Se o find falhar, $dadosAntigos ainda será null, e o logger pode lidar com isso.
-            $dadosAntigos = $this->find($id);
+            // 1. Update Entidade
+            $sql = "UPDATE {$this->table} SET 
+                    tipo = :tipo, tipo_pessoa = :tipo_pessoa, razao_social = :razao, 
+                    nome_fantasia = :nome_fan, codigo_interno = :codigo, cnpj_cpf = :doc, 
+                    inscricao_estadual_rg = :ie, situacao = :sit
+                    WHERE id = :id";
 
-            // 1. UPDATE na Entidade
-            $sqlEntidade = "UPDATE {$this->tableEntidade} SET 
-                tipo = ?, tipo_pessoa = ?, razao_social = ?, nome_fantasia = ?, 
-                cnpj_cpf = ?, situacao = ? 
-                WHERE id = ?";
-
-            $stmtEntidade = $this->pdo->prepare($sqlEntidade);
-            $stmtEntidade->execute([
-                $dataEntidade['tipo'],
-                $dataEntidade['tipo_pessoa'],
-                $dataEntidade['razao_social'],
-                $dataEntidade['nome_fantasia'] ?? null,
-                $dataEntidade['cnpj_cpf'],
-                $dataEntidade['situacao'] ?? 'Ativo',
-                $id
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([
+                ':tipo'        => $data['tipo'],
+                ':tipo_pessoa' => $data['tipo_pessoa'],
+                ':razao'       => $data['razao_social'],
+                ':nome_fan'    => $data['nome_fantasia'] ?? null,
+                ':codigo'      => $data['codigo_interno'] ?? null,
+                ':doc'         => $data['cnpj_cpf'],
+                ':ie'          => $data['inscricao_estadual_rg'] ?? null,
+                ':sit'         => $data['situacao'],
+                ':id'          => $id
             ]);
 
-            // 2. UPDATE no Endereço Principal (Busca e atualiza o endereço com tipo 'Principal')
-            $enderecoPrincipal = $dataEnderecos[0]; // Assume que o primeiro é o principal
+            // 2. Update ou Insert Endereço Principal
+            // (Se não existir, cria. Se existir, atualiza)
+            if (!empty($data['endereco_principal'])) {
+                $end = $data['endereco_principal'];
 
-            $sqlEnderecoUpdate = "UPDATE {$this->tableEndereco} SET 
-                cep = ?, logradouro = ?, numero = ?, complemento = ?, bairro = ?, cidade = ?, uf = ?
-                WHERE entidade_id = ? AND tipo_endereco = 'Principal'";
+                // Verifica se já existe endereço principal
+                $check = $this->pdo->prepare("SELECT id FROM {$this->tableEnd} WHERE entidade_id = ? AND tipo_endereco = 'Principal'");
+                $check->execute([$id]);
+                $endId = $check->fetchColumn();
 
-            $stmtEndereco = $this->pdo->prepare($sqlEnderecoUpdate);
-            $stmtEndereco->execute([
-                $enderecoPrincipal['cep'],
-                $enderecoPrincipal['logradouro'],
-                $enderecoPrincipal['numero'],
-                $enderecoPrincipal['complemento'] ?? null,
-                $enderecoPrincipal['bairro'],
-                $enderecoPrincipal['cidade'],
-                $enderecoPrincipal['uf'],
-                $id
-            ]);
+                if ($endId) {
+                    $sqlEnd = "UPDATE {$this->tableEnd} SET cep=?, logradouro=?, numero=?, complemento=?, bairro=?, cidade=?, uf=? WHERE id=?";
+                    $this->pdo->prepare($sqlEnd)->execute([
+                        $end['cep'],
+                        $end['logradouro'],
+                        $end['numero'],
+                        $end['complemento'] ?? null,
+                        $end['bairro'],
+                        $end['cidade'],
+                        $end['uf'],
+                        $endId
+                    ]);
+                } else {
+                    $sqlEnd = "INSERT INTO {$this->tableEnd} (entidade_id, tipo_endereco, cep, logradouro, numero, complemento, bairro, cidade, uf) VALUES (?, 'Principal', ?, ?, ?, ?, ?, ?, ?)";
+                    $this->pdo->prepare($sqlEnd)->execute([
+                        $id,
+                        $end['cep'],
+                        $end['logradouro'],
+                        $end['numero'],
+                        $end['complemento'] ?? null,
+                        $end['bairro'],
+                        $end['cidade'],
+                        $end['uf']
+                    ]);
+                }
+            }
 
-            // PASSO DE AUDITORIA 2: Log de UPDATE após o commit
-            $this->logger->log(
-                'UPDATE',
-                $this->tableEntidade,
-                $id,
-                $dadosAntigos, // Variável sempre terá um valor (null ou array)
-                $dataEntidade
-            );
-
+            $this->logger->log('UPDATE', $this->table, $id, $dadosAntigos, $data, $userId);
             $this->pdo->commit();
             return true;
         } catch (\PDOException $e) {
             $this->pdo->rollBack();
-            throw $e; // Lança a exceção para o Controller tratar o erro de DB
+            throw $e;
         }
-    }
-
-    /**
-     * Busca dados das entidades no formato DataTables (Server-Side).
-     * @param array $params Parâmetros DataTables (start, length, search, tipo).
-     * @return array Dados paginados e totais.
-     */
-    /* public function getForDataTable(array $params): array
-    {
-        $start = $params['start'];
-        $length = $params['length'];
-        $searchValue = $params['search'];
-        $tipo = $params['tipo'];
-
-        $bindParams = [];
-        $where = "WHERE 1=1 ";
-
-        // 1. Filtragem pelo TIPO (Cliente/Fornecedor/Transportadora)
-        if (strtolower($tipo) !== 'entidades') {
-            $where .= "AND tipo = :tipo ";
-            $bindParams[':tipo'] = $tipo;
-        }
-
-        // 2. Filtragem pela PESQUISA GLOBAL (Search)
-        if (!empty($searchValue)) {
-            $where .= "AND (razao_social LIKE :search OR cnpj_cpf LIKE :search OR nome_fantasia LIKE :search) ";
-            // Adicionamos o coringa (%) para a pesquisa LIKE
-            $bindParams[':search'] = "%" . $searchValue . "%";
-
-            // Se já temos a condição do tipo, a pesquisa aplica-se dentro desse tipo.
-        }
-
-        // 3. Contagem Total de Registros (Sem filtro de pesquisa)
-        $sqlTotal = "SELECT COUNT(id) FROM {$this->tableEntidade} " . ($where === "WHERE 1=1 " ? "" : $where);
-        // Clonamos os params, mas removemos o search para o totalFiltered
-        $paramsTotal = $bindParams;
-        unset($paramsTotal[':search']); // Se houver, remover o search para o total geral
-
-        $stmtTotal = $this->pdo->prepare($sqlTotal);
-        // Ajuste para bindar apenas o :tipo (se existir) para o total geral
-        $stmtTotal->execute(array_filter($paramsTotal, fn($k) => $k === ':tipo', ARRAY_FILTER_USE_KEY));
-        $totalRecords = $stmtTotal->fetchColumn();
-
-
-        // 4. Contagem de Registros Filtrados (Com filtro de pesquisa)
-        $sqlFiltered = "SELECT COUNT(id) FROM {$this->tableEntidade} " . $where;
-        $stmtFiltered = $this->pdo->prepare($sqlFiltered);
-        $stmtFiltered->execute($bindParams); // Executa com todos os filtros
-        $totalFiltered = $stmtFiltered->fetchColumn();
-
-
-        // 5. Query Principal com Limite (Paginação)
-        $sqlData = "SELECT id, situacao, tipo, razao_social, cnpj_cpf FROM {$this->tableEntidade} 
-                    {$where} 
-                    ORDER BY razao_social ASC 
-                    LIMIT :start, :length";
-
-        $stmtData = $this->pdo->prepare($sqlData);
-
-        // Bindar os parâmetros e limites
-        foreach ($bindParams as $key => $value) {
-            $stmtData->bindValue($key, $value);
-        }
-        $stmtData->bindValue(':start', (int)$start, PDO::PARAM_INT);
-        $stmtData->bindValue(':length', (int)$length, PDO::PARAM_INT);
-
-        $stmtData->execute();
-        $data = $stmtData->fetchAll(PDO::FETCH_ASSOC);
-
-        return [
-            'total' => $totalRecords,
-            'totalFiltered' => $totalFiltered,
-            'data' => $data
-        ];
-    } */
-
-    /**
-     * Busca dados das entidades no formato DataTables (Server-Side).
-     * @param array $params Parâmetros DataTables (start, length, search, tipo).
-     * @return array Dados paginados e totais.
-     */
-
-    public function getForDataTable(array $params): array
-    {
-        $start = $params['start'];
-        $length = $params['length'];
-        $searchValue = $params['search'];
-        $tipo = $params['tipo'];
-
-        $bindParams = [];
-        $where = "WHERE 1=1 ";
-
-        // --- 1. CONDIÇÃO BASE: Filtragem pelo TIPO ---
-        $tipoIsSet = (strtolower($tipo) !== 'entidades');
-        if ($tipoIsSet) {
-            $where .= "AND tipo = :tipo ";
-            $bindParams[':tipo'] = $tipo;
-        }
-
-        // --- 2. CONDIÇÃO DA PESQUISA GLOBAL (SEARCH) ---
-        $searchIsSet = !empty($searchValue);
-        if ($searchIsSet) {
-            $where .= "AND (razao_social LIKE :search1 OR cnpj_cpf LIKE :search2 OR nome_fantasia LIKE :search3) ";
-            $bindParams[':search1'] = "%" . $searchValue . "%";
-            $bindParams[':search2'] = "%" . $searchValue . "%";
-            $bindParams[':search3'] = "%" . $searchValue . "%";
-        }
-
-        // --- 3. CONTAGEM TOTAL (Sem pesquisa, Apenas filtro por Tipo) ---
-        $sqlTotal = "SELECT COUNT(id) FROM {$this->tableEntidade}";
-        if ($tipoIsSet) {
-            $sqlTotal .= " WHERE tipo = :tipo";
-        }
-        $stmtTotal = $this->pdo->prepare($sqlTotal);
-        if ($tipoIsSet) {
-            $stmtTotal->bindValue(':tipo', $tipo);
-        }
-        $stmtTotal->execute();
-        $totalRecords = $stmtTotal->fetchColumn();
-
-        // --- 4. CONTAGEM FILTRADA (Com pesquisa E filtro por Tipo) ---
-        $sqlFiltered = "SELECT COUNT(id) FROM {$this->tableEntidade} " . $where;
-        $stmtFiltered = $this->pdo->prepare($sqlFiltered);
-        foreach ($bindParams as $key => $value) {
-            $stmtFiltered->bindValue($key, $value);
-        }
-        $stmtFiltered->execute();
-        $totalFiltered = $stmtFiltered->fetchColumn();
-
-        // --- 5. QUERY PRINCIPAL COM LIMITE (Dados) ---
-        $sqlData = "SELECT id, situacao, tipo, razao_social, cnpj_cpf FROM {$this->tableEntidade} 
-                {$where} 
-                ORDER BY razao_social ASC 
-                LIMIT :start, :length";
-
-        $stmtData = $this->pdo->prepare($sqlData);
-
-        // Bindar os parâmetros nomeados
-        foreach ($bindParams as $key => $value) {
-            $stmtData->bindValue($key, $value);
-        }
-        $stmtData->bindValue(':start', (int)$start, PDO::PARAM_INT);
-        $stmtData->bindValue(':length', (int)$length, PDO::PARAM_INT);
-
-        $stmtData->execute();
-        $data = $stmtData->fetchAll(PDO::FETCH_ASSOC);
-
-        return [
-            'total' => $totalRecords,
-            'totalFiltered' => $totalFiltered,
-            'data' => $data
-        ];
-    }
-
-    /**
-     * Busca Entidades com o tipo 'Fornecedor' ou 'Cliente e Fornecedor' para Selects.
-     * @return array Opções no formato [id, nome_display].
-     */
-    public function getFornecedorOptions(): array
-    {
-        $sql = "SELECT 
-                    id, 
-                    COALESCE(nome_fantasia, razao_social) AS nome_display
-                FROM {$this->tableEntidade} 
-                WHERE (tipo = 'Fornecedor' OR tipo = 'Cliente e Fornecedor') 
-                AND situacao = 'Ativo' 
-                ORDER BY nome_display ASC";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute();
-
-        // Retorna os dados no formato esperado pelo Controller
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-
-    /**
-     * Busca clientes ativos para Select2, permitindo busca por termo.
-     * @param string $term Termo de busca (CNPJ/Nome).
-     * @return array Lista de clientes (id, nome_fantasia, razao_social, codigo_interno).
-     */
-    public function getClienteOptions(string $term = ''): array
-    {
-        $sql = "SELECT 
-                    id, 
-                    razao_social, 
-                    nome_fantasia,
-                    codigo_interno
-                FROM {$this->tableEntidade} 
-                WHERE (tipo = 'Cliente' OR tipo = 'Cliente e Fornecedor') 
-                AND situacao = 'Ativo'";
-
-        $params = [];
-
-        if (!empty($term)) {
-            $sql .= " AND (razao_social LIKE :term OR nome_fantasia LIKE :term OR codigo_interno LIKE :term)";
-            $params[':term'] = '%' . $term . '%';
-        }
-
-        $sql .= " ORDER BY razao_social ASC LIMIT 50"; // Limite para selects
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     /**
@@ -424,7 +234,7 @@ class EntidadeModel
             $dadosAntigos = $this->find($id);
 
             // 1. DELETA A ENTIDADE
-            $sqlEntidade = "DELETE FROM {$this->tableEntidade} WHERE id = ?";
+            $sqlEntidade = "DELETE FROM {$this->table} WHERE id = ?";
             $stmtEntidade = $this->pdo->prepare($sqlEntidade);
             $stmtEntidade->execute([$id]);
 
@@ -432,7 +242,7 @@ class EntidadeModel
             if ($stmtEntidade->rowCount() > 0) {
                 $this->logger->log(
                     'DELETE',
-                    $this->tableEntidade,
+                    $this->table,
                     $id,
                     $dadosAntigos, // O que foi deletado
                     null // Dados Novos: null
@@ -447,6 +257,23 @@ class EntidadeModel
         }
     }
 
+    public function find(int $id)
+    {
+        // Busca Entidade + Endereço Principal
+        $sql = "SELECT 
+                    ent.*,
+                    end.cep as end_cep, end.logradouro as end_logradouro, end.numero as end_numero,
+                    end.complemento as end_complemento, end.bairro as end_bairro, 
+                    end.cidade as end_cidade, end.uf as end_uf
+                FROM {$this->table} ent
+                LEFT JOIN {$this->tableEnd} end ON ent.id = end.entidade_id AND end.tipo_endereco = 'Principal'
+                WHERE ent.id = :id";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':id' => $id]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
     /**
      * Busca todos os endereços de uma entidade (exceto o Principal, que está no FIND).
      * @param int $entidadeId O ID da entidade.
@@ -455,7 +282,7 @@ class EntidadeModel
     public function getEnderecosAdicionais(int $entidadeId): array
     {
         $sql = "SELECT id, tipo_endereco, cep, logradouro, numero, complemento, bairro, cidade, uf 
-                FROM {$this->tableEndereco} 
+                FROM {$this->tableEnd} 
                 WHERE entidade_id = :id AND tipo_endereco != 'Principal' 
                 ORDER BY tipo_endereco";
 
@@ -474,7 +301,7 @@ class EntidadeModel
     public function createEnderecoAdicional(int $entidadeId, array $endereco)
     {
         try {
-            $sqlEndereco = "INSERT INTO {$this->tableEndereco} 
+            $sqlEndereco = "INSERT INTO {$this->tableEnd} 
                 (entidade_id, tipo_endereco, cep, logradouro, numero, complemento, bairro, cidade, uf)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
@@ -508,7 +335,7 @@ class EntidadeModel
     public function findEnderecoAdicional(int $id)
     {
         $sql = "SELECT id, tipo_endereco, cep, logradouro, numero, complemento, bairro, cidade, uf 
-                FROM {$this->tableEndereco} 
+                FROM {$this->tableEnd} 
                 WHERE id = :id";
 
         $stmt = $this->pdo->prepare($sql);
@@ -524,7 +351,7 @@ class EntidadeModel
      */
     public function updateEnderecoAdicional(int $id, array $endereco)
     {
-        $sql = "UPDATE {$this->tableEndereco} SET 
+        $sql = "UPDATE {$this->tableEnd} SET 
             tipo_endereco = ?, cep = ?, logradouro = ?, numero = ?, complemento = ?, bairro = ?, cidade = ?, uf = ?
             WHERE id = ?";
 
@@ -549,7 +376,7 @@ class EntidadeModel
      */
     public function deleteEnderecoAdicional(int $id)
     {
-        $sql = "DELETE FROM {$this->tableEndereco} WHERE id = ?";
+        $sql = "DELETE FROM {$this->tableEnd} WHERE id = ?";
         $stmt = $this->pdo->prepare($sql);
         return $stmt->execute([$id]);
     }
@@ -565,7 +392,7 @@ class EntidadeModel
                     id, 
                     razao_social, 
                     nome_fantasia
-                FROM {$this->tableEntidade} 
+                FROM {$this->table} 
                 WHERE situacao = 'Ativo'";
 
         $params = [];

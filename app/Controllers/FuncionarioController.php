@@ -95,70 +95,96 @@ class FuncionarioController
     }
 
 
-    /**
-     * Salva ou Atualiza um funcionário (POST).
-     * O Controller agora faz o Hashing e passa o ID de Auditoria.
-     */
     public function salvarFuncionario()
     {
         $id = filter_input(INPUT_POST, 'funcionario_id', FILTER_VALIDATE_INT);
         $acao = $id ? 'Alterar' : 'Criar';
         $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
-        $userId = $_SESSION['user_id'] ?? 0; // ID DO USUÁRIO LOGADO para Auditoria
+        $userId = $_SESSION['user_id'] ?? 0;
 
+        // 1. Permissão
         if (!PermissaoService::checarPermissao($cargo, 'Funcionarios', $acao)) {
             http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Acesso negado para esta ação.']);
+            echo json_encode(['success' => false, 'message' => 'Acesso negado.']);
             exit;
         }
 
-        // 1. Coleta e Sanitiza os dados
+        $postLimpo = sanitize_input_array($_POST);
+
+        // 2. Coleta Dados Básicos
+        $temAcesso = isset($_POST['tem_acesso']); // Checkbox marcado?
+
         $data = [
-            'nome_completo' => filter_input(INPUT_POST, 'funcionario_nome', FILTER_SANITIZE_SPECIAL_CHARS),
-            'email'         => filter_input(INPUT_POST, 'funcionario_email', FILTER_SANITIZE_EMAIL),
-            'tipo_cargo'    => filter_input(INPUT_POST, 'funcionario_cargo', FILTER_SANITIZE_SPECIAL_CHARS),
-            'situacao'      => filter_input(INPUT_POST, 'funcionario_situacao', FILTER_SANITIZE_SPECIAL_CHARS),
-            'senha_pura'    => filter_input(INPUT_POST, 'funcionario_senha', FILTER_DEFAULT),
+            'nome_completo' => $postLimpo [ 'funcionario_nome'],
+            'nome_comum'    => $postLimpo [ 'funcionario_apelido'],
+            'tipo_cargo'    => $postLimpo [ 'funcionario_cargo'],
+            'situacao'      => $postLimpo [ 'funcionario_situacao'],
+            
+            // Inicializa Login como NULL por padrão
+            'email'         => null,
+            'senha_hash'    => null,
         ];
 
-        // 2. Validação básica e Hashing de Senha (TRANSFERIDO PARA O CONTROLLER)
-        if (!$id && empty($data['senha_pura'])) {
-            echo json_encode(['success' => false, 'message' => 'A senha é obrigatória para um novo cadastro.']);
-            exit;
+        // Pequena lógica inteligente: Se não digitou apelido, usa o primeiro nome
+        if (empty($data['nome_comum'])) {
+            $partes = explode(' ', $data['nome_completo']);
+            $data['nome_comum'] = $partes[0];
         }
 
-        // Se houver senha, criptografa
-        if (!empty($data['senha_pura'])) {
-            $data['senha_hash'] = password_hash($data['senha_pura'], PASSWORD_BCRYPT);
-        }
-        unset($data['senha_pura']); // Remove a senha pura antes de passar para o Model
+        // 3. Processa Login (Se Checkbox marcado)
+        if ($temAcesso) {
+            $emailInput = $postLimpo['funcionario_email'];
 
-        // 3. Chamada ao Model
+            if (empty($emailInput)) {
+                echo json_encode(['success' => false, 'message' => 'Email é obrigatório para usuários com acesso.']);
+                exit;
+            }
+            $data['email'] = $emailInput;
+
+            // Senha
+            $senhaPura = $_POST['funcionario_senha'] ?? '';
+
+            // Se for NOVO e tem acesso, senha é obrigatória
+            if (!$id && empty($senhaPura)) {
+                echo json_encode(['success' => false, 'message' => 'Senha é obrigatória para novos usuários.']);
+                exit;
+            }
+
+            // Se digitou senha (Novo ou Edição), criptografa e atualiza
+            if (!empty($senhaPura)) {
+                $data['senha_hash'] = password_hash($senhaPura, PASSWORD_BCRYPT);
+            }
+            // OBS: Se for Edição e senhaPura estiver vazia, 'senha_hash' continua NULL no array $data. 
+            // O Model deve ser inteligente para ignorar 'senha_hash' se for NULL durante o UPDATE, 
+            // a menos que estejamos removendo o acesso (mas aqui estamos dentro do if($temAcesso), então ok).
+        }
+
+        // 4. Salvar no Banco
         try {
             if ($id) {
-                // UPDATE
+                // UPDATE: O Model cuida de manter a senha antiga se $data['senha_hash'] for null/vazio E $temAcesso for true
+                // Se $temAcesso for false, o Model vai receber email=null e senha=null e vai zerar o acesso.
                 $this->funcionarioModel->updateFuncionario($id, $data, $userId);
                 $message = 'Funcionário atualizado com sucesso!';
                 $newId = $id;
             } else {
                 // CREATE
-                $newId = $this->funcionarioModel->createFuncionario($data, $userId); // Passa o userId
+                $newId = $this->funcionarioModel->createFuncionario($data, $userId);
                 $message = 'Funcionário cadastrado com sucesso!';
             }
 
             echo json_encode(['success' => true, 'message' => $message, 'func_id' => $newId]);
         } catch (\PDOException $e) {
-            // Código 23000 = Violacão de integridade (Ex: Email duplicado)
             if ($e->getCode() === '23000') {
-                $message = "Erro: O email **{$data['email']}** já está cadastrado. Emails devem ser únicos.";
+                $message = "Erro: O email informado já está em uso.";
             } else {
-                error_log("Erro no DB ao salvar funcionário: " . $e->getMessage());
-                $message = "Erro interno do banco de dados ao salvar o funcionário.";
+                error_log("DB Error: " . $e->getMessage());
+                $message = "Erro interno ao salvar dados.";
             }
             echo json_encode(['success' => false, 'message' => $message]);
         } catch (\Exception $e) {
-            error_log("Erro geral ao salvar funcionário: " . $e->getMessage());
-            echo json_encode(['success' => false, 'message' => 'Ocorreu um erro inesperado: ' . $e->getMessage()]);
+            error_log("General Error: " . $e->getMessage());
+            echo json_encode(['success' => false, 'message' => 'Erro inesperado: ' . $e->getMessage()]);
         }
     }
 

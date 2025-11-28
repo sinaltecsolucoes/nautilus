@@ -133,32 +133,32 @@ class EntidadeController
         $start = filter_input(INPUT_POST, 'start', FILTER_VALIDATE_INT) ?? 0;
         $length = filter_input(INPUT_POST, 'length', FILTER_VALIDATE_INT) ?? 10;
         $searchValue = filter_input(INPUT_POST, 'search', FILTER_DEFAULT, FILTER_REQUIRE_ARRAY)['value'] ?? '';
-        $tipoEntidade = filter_input(INPUT_POST, 'tipo_entidade', FILTER_SANITIZE_SPECIAL_CHARS) ?? 'cliente';
 
+        // Parâmetro personalizado para filtrar por Cliente/Fornecedor/etc.
+        $tipoEntidade = filter_input(INPUT_POST, 'tipo_entidade', FILTER_SANITIZE_SPECIAL_CHARS) ?? 'Entidades';
+
+        // 3. Chama o Model para buscar os dados
         try {
-            $resultado = $this->entidadeModel->findAllForDataTable([
-                'start'  => $start,
+            $resultado = $this->entidadeModel->getForDataTable([
+                'start' => $start,
                 'length' => $length,
-                'search' => ['value' => $searchValue],
-                'tipo_entidade' => $tipoEntidade,
-                'draw'   => $draw
+                'search' => $searchValue,
+                'tipo' => $tipoEntidade
             ]);
 
-            // Corrigido: usa as chaves exatas retornadas pelo modelo
+            // 4. Monta a Resposta no formato DataTables
             echo json_encode([
-                'draw'            => $draw,
-                'recordsTotal'    => $resultado['recordsTotal'],
-                'recordsFiltered' => $resultado['recordsFiltered'],
-                'data'            => $resultado['data']
+                'draw' => $draw,
+                'recordsTotal' => $resultado['total'],
+                'recordsFiltered' => $resultado['totalFiltered'],
+                'data' => $resultado['data']
             ]);
         } catch (\Exception $e) {
             http_response_code(500);
             error_log("Erro no listarEntidades: " . $e->getMessage());
-            echo json_encode(['error' => 'Erro interno ao buscar dados.']);
+            echo json_encode(['error' => 'Erro interno do servidor ao buscar dados.']);
         }
     }
-
-
 
     /**
      * Salva ou Atualiza uma entidade (POST).
@@ -166,72 +166,43 @@ class EntidadeController
     public function salvarEntidade()
     {
         $id = filter_input(INPUT_POST, 'ent_codigo', FILTER_VALIDATE_INT);
-        $userId = $_SESSION['user_id'] ?? 0;
-        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
-
         $acao = $id ? 'Alterar' : 'Criar';
+        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        $userId = $_SESSION['user_id'] ?? 0;
 
-        // Verificação de permissão
+        // VERIFICAÇÃO DE PERMISSÃO (ACL/RBAC)
         if (!PermissaoService::checarPermissao($cargo, 'Entidades', $acao)) {
             http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Acesso negado para ' . $acao . '.']);
+            echo json_encode(['success' => false, 'message' => 'Acesso negado para esta ação.']);
             exit;
         }
 
-        // Monta array com dados da entidade (campos esperados pelo Model)
-        $dadosEntidade = [
-            'tipo'                  => ucfirst(filter_input(INPUT_POST, 'tipo') ?? 'cliente'),
-            'tipo_pessoa'           => filter_input(INPUT_POST, 'tipo_pessoa'),
-            'razao_social'          => filter_input(INPUT_POST, 'razao_social'),
-            'nome_fantasia'         => filter_input(INPUT_POST, 'nome_fantasia') ?: null,
-            'codigo_interno'        => filter_input(INPUT_POST, 'codigo_interno') ?: null,
-            'cnpj_cpf'              => preg_replace('/\D/', '', filter_input(INPUT_POST, 'cnpj_cpf') ?? ''),
-            'inscricao_estadual_rg' => filter_input(INPUT_POST, 'inscricao_estadual_rg') ?: null,
-            'situacao'              => filter_input(INPUT_POST, 'situacao') ?? 'Ativo',
-            // Endereço principal (o Model espera dentro de 'endereco_principal')
-            'endereco_principal'    => [
-                'cep'         => preg_replace('/\D/', '', $_POST['end_cep'] ?? ''),
-                'logradouro'  => $_POST['end_logradouro'] ?? '',
-                'numero'      => $_POST['end_numero'] ?? '',
-                'complemento' => $_POST['end_complemento'] ?? null,
-                'bairro'      => $_POST['end_bairro'] ?? '',
-                'cidade'      => $_POST['end_cidade'] ?? '',
-                'uf'          => $_POST['end_uf'] ?? ''
-            ]
-        ];
+        // Simulação de dados: O Model espera os dados de Entidade e Endereço Principal separados.
+        $dataEntidade = $_POST;
+        // Endereço Principal (sempre é o tipo 'Principal' na primeira aba)
+        $dataEnderecos = [array_merge($_POST, ['tipo_endereco' => 'Principal'])];
 
         try {
             if ($id) {
-                // UPDATE
-                $this->entidadeModel->update($id, $dadosEntidade, $userId);
+                // CORREÇÃO: Passando AGORA os 4 argumentos: $id, $dataEntidade, $dataEnderecos, $userId
+                $this->entidadeModel->update($id, $dataEntidade, $dataEnderecos, $userId);
                 $message = 'Entidade atualizada com sucesso!';
                 $newId = $id;
             } else {
-                // CREATE
-                $newId = $this->entidadeModel->create($dadosEntidade, $userId); // CORRETO: array + int
+                // CREATE: Cria a entidade e seu endereço principal
+                $newId = $this->entidadeModel->create($dataEntidade, $dataEnderecos);
                 $message = 'Entidade cadastrada com sucesso!';
             }
 
-            echo json_encode([
-                'success'     => true,
-                'message'     => $message,
-                'ent_codigo'  => $newId
-            ]);
+            echo json_encode(['success' => true, 'message' => $message, 'ent_codigo' => $newId]);
         } catch (\PDOException $e) {
-            $errorCode = $e->getCode();
-
-            if ($errorCode === '23000') {
-                // Duplicidade de CNPJ/CPF ou código interno
-                $message = "Erro: CNPJ/CPF ou Código Interno já cadastrado.";
+            // Tratamento de erro de CNPJ/CPF duplicado (código 23000)
+            if ($e->getCode() === '23000') {
+                $message = "Erro: CNPJ/CPF já existe no cadastro.";
             } else {
-                $message = "Erro no banco de dados: " . $e->getMessage();
+                $message = "Erro no banco de dados. " . $e->getMessage();
             }
-
-            http_response_code(500);
-            echo json_encode([
-                'success' => false,
-                'message' => $message
-            ]);
+            echo json_encode(['success' => false, 'message' => $message]);
         }
     }
 
@@ -462,7 +433,7 @@ class EntidadeController
         $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
         $endId = filter_input(INPUT_POST, 'end_id', FILTER_VALIDATE_INT);
 
-        if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Alterar')) {
+        if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Alterar')) { 
             http_response_code(403);
             echo json_encode(['success' => false, 'message' => 'Acesso negado.']);
             exit;
@@ -483,5 +454,4 @@ class EntidadeController
             echo json_encode(['success' => false, 'message' => 'Erro no banco de dados.']);
         }
     }
-   
 }

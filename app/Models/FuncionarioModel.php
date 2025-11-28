@@ -37,12 +37,13 @@ class FuncionarioModel
 
         try {
             $sql = "INSERT INTO {$this->table}
-                (nome_completo, email, senha_hash, tipo_cargo, situacao)
-                VALUES (:nome_completo, :email, :senha_hash, :tipo_cargo, :situacao)";
+                (nome_completo, nome_comum, email, senha_hash, tipo_cargo, situacao)
+                VALUES (:nome_completo, :nome_comum, :email, :senha_hash, :tipo_cargo, :situacao)";
 
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute([
                 ':nome_completo' => $data['nome_completo'],
+                ':nome_comum'    => $data['nome_comum'],
                 ':email'         => $data['email'],
                 ':senha_hash'    => $data['senha_hash'] ?? null,
                 ':tipo_cargo'    => $data['tipo_cargo'],
@@ -108,10 +109,11 @@ class FuncionarioModel
 
         // 1. CONDIÇÃO DA PESQUISA GLOBAL (SEARCH)
         if (!empty($searchValue)) {
-            $where .= "AND (nome_completo LIKE :search1 OR email LIKE :search2 OR tipo_cargo LIKE :search3) ";
+            $where .= "AND (nome_completo LIKE :search1 OR nome_comum LIKE :search2 OR email LIKE :search3 OR tipo_cargo LIKE :search4) ";
             $bindParams[':search1'] = "%" . $searchValue . "%";
             $bindParams[':search2'] = "%" . $searchValue . "%";
             $bindParams[':search3'] = "%" . $searchValue . "%";
+            $bindParams[':search4'] = "%" . $searchValue . "%";
         }
 
         // 2. Contagem Total de Registros
@@ -128,7 +130,7 @@ class FuncionarioModel
 
 
         // 4. Query Principal com Limite (Dados)
-        $sqlData = "SELECT id, nome_completo, email, tipo_cargo, situacao FROM {$this->table} 
+        $sqlData = "SELECT id, nome_completo, nome_comum, email, tipo_cargo, situacao FROM {$this->table} 
                     {$where} 
                     ORDER BY nome_completo ASC 
                     LIMIT :start, :length";
@@ -159,7 +161,7 @@ class FuncionarioModel
      */
     public function find(int $id)
     {
-        $sql = "SELECT id, nome_completo, email, tipo_cargo, situacao, data_criacao, data_atualizacao
+        $sql = "SELECT id, nome_completo, nome_comum, email, tipo_cargo, situacao, data_criacao, data_atualizacao
                 FROM {$this->table} WHERE id = :id";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([':id' => $id]);
@@ -169,24 +171,25 @@ class FuncionarioModel
 
     /**
      * Atualiza um funcionário existente.
-     * @param int $id ID do funcionário.
-     * @param array $data Dados para atualização (pode incluir 'senha_hash').
-     * @param int $userId ID do usuário logado (para auditoria).
-     * @return bool Sucesso ou falha.
+     * Agora suporta definir campos como NULL (para remover acesso).
      */
     public function updateFuncionario(int $id, array $data, int $userId): bool
     {
         $this->pdo->beginTransaction();
-        $dadosAntigos = $this->find($id); // OBTÉM DADOS ANTIGOS PARA AUDITORIA
+        $dadosAntigos = $this->find($id); // Obtém dados antigos para auditoria
 
-        // Constrói a query e os parâmetros dinamicamente (para incluir ou não a senha)
-        $fields = ['nome_completo', 'email', 'tipo_cargo', 'situacao', 'senha_hash'];
+        // Campos permitidos para atualização
+        $fields = ['nome_completo', 'nome_comum', 'email', 'tipo_cargo', 'situacao', 'senha_hash'];
         $setClauses = [];
         $bindValues = [];
 
         foreach ($fields as $field) {
-            // Verifica se o campo existe nos dados passados
-            if (isset($data[$field])) {
+            if (array_key_exists($field, $data)) {
+
+                if ($field === 'senha_hash' && empty($data[$field]) && !empty($data['email'])) {
+                    continue;
+                }
+
                 $setClauses[] = "{$field} = :{$field}";
                 $bindValues[":{$field}"] = $data[$field];
             }
@@ -214,10 +217,10 @@ class FuncionarioModel
                 $userId
             );
 
-            $this->pdo->commit(); // Confirma a transação
+            $this->pdo->commit();
             return true;
         } catch (\PDOException $e) {
-            $this->pdo->rollBack(); // Reverte a transação em caso de erro
+            $this->pdo->rollBack();
             throw $e;
         }
     }
@@ -320,5 +323,17 @@ class FuncionarioModel
             'Auxiliar de Vendas',
             'Auxiliar de Expedicao'
         ];
+    }
+
+    /**
+     * Busca motoristas ativos para o select de abastecimento.
+     */
+    public function getMotoristasOptions()
+    {
+        // Busca apenas quem tem cargo de Motorista e está Ativo
+        $sql = "SELECT id, nome_completo FROM funcionarios 
+                WHERE tipo_cargo = 'Motorista' AND situacao = 'Ativo' 
+                ORDER BY nome_completo ASC";
+        return $this->pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
     }
 }

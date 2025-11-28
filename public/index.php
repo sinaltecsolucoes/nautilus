@@ -13,6 +13,9 @@ define('ROOT_PATH', dirname(__DIR__));
 session_start(); // Inicia a sessão para controle de login/usuário
 require_once ROOT_PATH . '/config/config.php';
 
+// Carrega funções globais (Helpers)
+require_once '../app/Helpers/functions.php';
+
 // 2. Inclusão dos Controllers
 require_once ROOT_PATH . '/app/Controllers/AuthController.php';
 require_once ROOT_PATH . '/app/Controllers/DashboardController.php';
@@ -23,6 +26,7 @@ require_once ROOT_PATH . '/app/Controllers/VeiculoController.php';
 require_once ROOT_PATH . '/app/Controllers/FuncionarioController.php';
 require_once ROOT_PATH . '/app/Controllers/PedidoController.php';
 require_once ROOT_PATH . '/app/Controllers/ExpedicaoController.php';
+require_once ROOT_PATH . '/app/Controllers/AbastecimentoController.php';
 
 // 3. Definição do Roteamento
 $route = $_GET['route'] ?? 'home';
@@ -52,7 +56,7 @@ $routes = [
 
     // Rotas de Permissões
     'permissoes'        => ['PermissaoController', 'index'],
-    'permissoes-update' => ['PermissaoController', 'update'],
+    'permissoes/salvar' => ['PermissaoController', 'salvar'],
 
     // Rotas de Entidades (View)
     'clientes'          => ['EntidadeController', 'index'],
@@ -79,7 +83,7 @@ $routes = [
 
     // Rotas de Ações CRUD para Entidades
     'entidades/listar' => ['EntidadeController', 'listarEntidades'],
-    'entidades/get'    => ['EntidadeController', 'getEntidade'],
+    'entidades/getEntidade'    => ['EntidadeController', 'getEntidade'],
     'entidades/salvar' => ['EntidadeController', 'salvarEntidade'],
     'entidades/deletar' => ['EntidadeController', 'deleteEntidade'],
 
@@ -115,6 +119,13 @@ $routes = [
     'expedicao/deletar'     => ['ExpedicaoController', 'deleteExpedicao'],
     'expedicao/pedidos-pendentes' => ['ExpedicaoController', 'getPedidosPendentesOptions'],
 
+    // Rotas de Abastecimento (Frota)
+    'abastecimentos'         => ['AbastecimentoController', 'index'],
+    'abastecimentos/listar'  => ['AbastecimentoController', 'listar'],
+    'abastecimentos/salvar'  => ['AbastecimentoController', 'salvar'],
+    'abastecimentos/get'     => ['AbastecimentoController', 'get'],
+    'abastecimentos/deletar' => ['AbastecimentoController', 'deletar'],
+
     // Rotas de Relatórios
     'relatorios'                => ['RelatorioController', 'index'],
     'relatorios/manutencao-pdf' => ['RelatorioController', 'gerarManutencaoPdf'],
@@ -124,8 +135,6 @@ $routes = [
 $public_routes = ['login', 'logout', 'home'];
 $is_public_route = in_array($route, $public_routes);
 $is_logged_in = !empty($_SESSION['logged_in']);
-
-// CORREÇÃO: Evitar redirecionamento infinito
 
 // Se NÃO logado e rota protegida → vai para login
 if (!$is_logged_in && !$is_public_route) {

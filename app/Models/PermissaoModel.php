@@ -58,7 +58,7 @@ class PermissaoModel
      * Busca todas as regras de permissão do sistema, agrupadas por Módulo.
      * @return array Array aninhado de permissões [cargo][modulo][acao]
      */
-    public function getAllPermissoes()
+    /*  public function getAllPermissoes()
     {
         // Seleciona todos os dados da tabela, ordenados para facilitar a visualização (View)
         $sql = "SELECT id, tipo_cargo, modulo, acao, permitido 
@@ -77,7 +77,7 @@ class PermissaoModel
             ];
         }
         return $permissoes;
-    }
+    }*/
 
     /**
      * Atualiza o status 'permitido' de uma regra específica.
@@ -85,7 +85,7 @@ class PermissaoModel
      * @param bool $status O novo status (1 para TRUE/Permitido, 0 para FALSE/Negado).
      * @return bool Sucesso ou falha na atualização.
      */
-    public function updatePermissaoStatus($id, $status)
+    /*  public function updatePermissaoStatus($id, $status)
     {
         $sql = "UPDATE {$this->table} SET permitido = :status WHERE id = :id";
 
@@ -100,5 +100,33 @@ class PermissaoModel
             // Log::error("Erro ao atualizar permissão ID {$id}: " . $e->getMessage()); 
             return false;
         }
+    }*/
+
+    public function getAllPermissoesMatriz()
+    {
+        $sql = "SELECT tipo_cargo, modulo, acao, permitido FROM permissoes_modulos";
+        $stmt = $this->pdo->query($sql);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $matriz = [];
+        foreach ($rows as $r) {
+            // Cria um array: $matriz['Motorista']['Entidades']['Ler'] = true
+            if ($r['permitido'] == 1) {
+                $matriz[$r['tipo_cargo']][$r['modulo']][$r['acao']] = true;
+            }
+        }
+        return $matriz;
+    }
+
+    // Salva ou Atualiza uma permissão (Upsert)
+    public function updatePermissao($cargo, $modulo, $acao, $status)
+    {
+        // Tenta inserir, se já existir (chave única), atualiza
+        $sql = "INSERT INTO permissoes_modulos (tipo_cargo, modulo, acao, permitido) 
+                VALUES (?, ?, ?, ?) 
+                ON DUPLICATE KEY UPDATE permitido = VALUES(permitido)";
+
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([$cargo, $modulo, $acao, $status]);
     }
 }

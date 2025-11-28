@@ -40,6 +40,34 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // Lógica do Checkbox de Acesso
+    $('#tem_acesso').on('change', function () {
+        const isChecked = $(this).is(':checked');
+        const isEdit = $('#funcionario-id').val() !== '';
+
+        if (isChecked) {
+            $('#area-login').slideDown();
+            $('#funcionario-email').prop('required', true);
+
+            // Senha obrigatória apenas se for NOVO usuário com acesso
+            if (!isEdit) {
+                $('#funcionario-senha').prop('required', true);
+                $('#funcionario-confirmar-senha').prop('required', true);
+                $('#senha-help').text('Senha obrigatória para novos usuários com acesso.');
+            } else {
+                // Na edição, senha é opcional (só se quiser trocar)
+                $('#funcionario-senha').prop('required', false);
+                $('#funcionario-confirmar-senha').prop('required', false);
+                $('#senha-help').text('Preencha apenas se quiser alterar a senha atual.');
+            }
+        } else {
+            $('#area-login').slideUp();
+            $('#funcionario-email').prop('required', false).val('');
+            $('#funcionario-senha').prop('required', false).val('');
+            $('#funcionario-confirmar-senha').prop('required', false).val('');
+        }
+    });
+
     // Função de feedback original (substituída acima, mas mantida no JS do usuário)
     // Se a função showFeedback estiver em outro arquivo (layout.php), podemos removê-la daqui.
     // Vamos assumir que ela precisa ser adaptada:
@@ -60,6 +88,7 @@ document.addEventListener('DOMContentLoaded', function () {
         },
         "columns": [
             { "data": "nome_completo" },
+            { "data": "nome_comum" },
             { "data": "email" },
             { "data": "tipo_cargo" },
             {
@@ -104,9 +133,13 @@ document.addEventListener('DOMContentLoaded', function () {
         $idInput.val('');
         $form[0].reset();
         $('#modal-funcionario-label').text('Adicionar Novo Funcionário');
-        $senhaInput.prop('required', true).closest('.col-md-6').show();
-        $confirmarSenhaInput.prop('required', true).closest('.col-md-6').show();
+        /* $senhaInput.prop('required', true).closest('.col-md-6').show();
+         $confirmarSenhaInput.prop('required', true).closest('.col-md-6').show();*/
+
+        // Apenas garantimos que o checkbox de acesso comece desmarcado.
+        $('#tem_acesso').prop('checked', false).trigger('change');
         $btnSalvar.html('<i class="fas fa-save me-2"></i> Salvar Funcionário');
+        //$('#tem_acesso').prop('checked', false).trigger('change'); // Reseta para fechado
     });
 
     // Abrir Modal (Editar)
@@ -130,9 +163,17 @@ document.addEventListener('DOMContentLoaded', function () {
             if (response.success && response.data) {
                 const data = response.data;
                 $('#funcionario-nome').val(data.nome_completo);
+                $('#funcionario-apelido').val(data.nome_comum);
                 $('#funcionario-email').val(data.email);
                 $('#funcionario-cargo').val(data.tipo_cargo);
                 $('#funcionario-situacao').val(data.situacao);
+
+                if (data.email) {
+                    $('#tem_acesso').prop('checked', true).trigger('change');
+                    $('#funcionario-email').val(data.email);
+                } else {
+                    $('#tem_acesso').prop('checked', false).trigger('change');
+                }
                 $modal.modal('show');
             } else {
                 showSwalFeedback(response.message, 'danger');
@@ -146,17 +187,29 @@ document.addEventListener('DOMContentLoaded', function () {
     $form.on('submit', function (e) {
         e.preventDefault();
 
-        // VALIDAÇÃO DE SENHA NOVO:
-        if ($senhaInput.val() !== $confirmarSenhaInput.val()) {
-            showSwalFeedback('Erro: As senhas digitadas não coincidem.', 'warning');
-            return;
-        }
+        const senhaVal = $senhaInput.val();
+        const confSenhaVal = $confirmarSenhaInput.val();
+        const temAcesso = $('#tem_acesso').is(':checked');
 
-        // Se for um novo cadastro, a senha deve ser obrigatória
-        const isNew = !$idInput.val();
-        if (isNew && $senhaInput.val().length < 6) {
-            showSwalFeedback('Erro: A senha deve ter no mínimo 6 caracteres.', 'warning');
-            return;
+        // VALIDAÇÃO DE SENHA (Apenas se o checkbox de acesso estiver marcado)
+        if (temAcesso) {
+            if (senhaVal !== confSenhaVal) {
+                showSwalFeedback('Erro: As senhas digitadas não coincidem.', 'warning');
+                return;
+            }
+
+            // Se for novo cadastro E marcou acesso, senha é obrigatória e deve ter min 6 chars
+            const isNew = !$idInput.val();
+            if (isNew && senhaVal.length < 6) {
+                showSwalFeedback('Erro: A senha deve ter no mínimo 6 caracteres.', 'warning');
+                return;
+            }
+
+            // Se for edição e o usuário digitou algo na senha, valida tamanho
+            if (!isNew && senhaVal.length > 0 && senhaVal.length < 6) {
+                showSwalFeedback('Erro: A nova senha deve ter no mínimo 6 caracteres.', 'warning');
+                return;
+            }
         }
 
         // Bloqueia o botão para evitar cliques duplicados
@@ -181,7 +234,6 @@ document.addEventListener('DOMContentLoaded', function () {
             showSwalFeedback('Erro de Comunicação com o servidor.', 'danger');
         });
     });
-
 
     // ===============================================================
     // 3. Ação de Inativar (SOFT DELETE) - COM SWEETALERT2

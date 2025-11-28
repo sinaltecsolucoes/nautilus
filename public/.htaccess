@@ -3,7 +3,7 @@
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteBase /nautilus/public/
+    RewriteBase /nautilus/
 
     # ==============================================================
     # 1. ROTAS DA API: CAPTURA /api/... ANTES DE QUALQUER COISA

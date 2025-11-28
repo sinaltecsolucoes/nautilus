@@ -60,6 +60,7 @@ $THEME_JS  = $TEMA_BASE_URL . '/js';
                             Cadastros Base
                             <div class="sb-sidenav-collapse-arrow"><i class="fas fa-angle-down"></i></div>
                         </a>
+
                         <div class="collapse" id="collapseCadastros">
                             <nav class="sb-sidenav-menu-nested nav">
                                 <a class="nav-link" href="<?php echo BASE_URL; ?>/clientes">Clientes</a>
@@ -74,10 +75,19 @@ $THEME_JS  = $TEMA_BASE_URL . '/js';
                             <div class="sb-nav-link-icon"><i class="fas fa-funnel-dollar"></i></div>
                             Vendas / Pedidos
                         </a>
-                        <a class="nav-link" href="<?php echo BASE_URL; ?>/logistica">
-                            <div class="sb-nav-link-icon"><i class="fas fa-shipping-fast"></i></div>
-                            Logística
+
+                        <a class="nav-link collapsed" href="#" data-bs-toggle="collapse" data-bs-target="#collapseLogistica">
+                            <div class="sb-nav-link-icon"><i class="fas fa-columns"></i></div>
+                            Logistica
+                            <div class="sb-sidenav-collapse-arrow"><i class="fas fa-angle-down"></i></div>
                         </a>
+
+                        <div class="collapse" id="collapseLogistica">
+                            <nav class="sb-sidenav-menu-nested nav">
+                                <a class="nav-link" href="<?php echo BASE_URL; ?>/logistica">Expedição</a>
+                                <a class="nav-link" href="<?php echo BASE_URL; ?>/abastecimentos">Abastecimentos</a>
+                            </nav>
+                        </div>
 
                         <div class="sb-sidenav-menu-heading">Admin</div>
                         <a class="nav-link" href="<?php echo BASE_URL; ?>/usuarios">
@@ -145,6 +155,8 @@ $THEME_JS  = $TEMA_BASE_URL . '/js';
         <script src="<?php echo BASE_URL; ?>/assets/js/<?php echo $data['pageScript']; ?>.js"></script>
     <?php endif; ?>
     <!-- ================================================================ -->
+
+    <script src="<?= BASE_URL ?>/assets/js/datatables-pt-BR.js"></script>
 
 </body>
 
