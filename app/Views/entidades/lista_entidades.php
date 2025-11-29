@@ -43,11 +43,13 @@ if (strtolower($pageType) === 'fornecedor') {
             <table class="table table-bordered" id="tabela-entidades" width="100%" cellspacing="0">
                 <thead>
                     <tr>
-                        <th>Situação</th>
-                        <th>Tipo</th>
-                        <th>Razão Social</th>
-                        <th>CPF/CNPJ</th>
-                        <th>Ações</th>
+                        <th class="text-center align-middle">Situação</th>
+                        <th class="text-center align-middle">Tipo</th>
+                        <th class="text-center align-middle">Cód. Interno</th>
+                        <th class="text-center align-middle">Razão Social</th>
+                        <th class="text-center align-middle">Nome Fantasia</th>
+                        <th class="text-center align-middle">CPF/CNPJ</th>
+                        <th class="text-center align-middle">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -135,42 +137,42 @@ if (strtolower($pageType) === 'fornecedor') {
                             </div>
 
                             <hr>
-                            <h5 class="modal-title">Endereço Principal</h5>
+                            <h5 class="modal-title">Endereço Principal (Visualização)</h5>
 
                             <div class="row mt-3">
                                 <div class="col-md-4 mb-3">
                                     <label for="end_cep" class="form-label">CEP</label>
-                                    <input type="text" class="form-control" id="end_cep" name="end_cep" maxlength="9">
+                                    <input type="text" class="form-control bg-light" id="end_cep" name="end_cep" maxlength="9" readonly>
                                 </div>
 
                                 <div class="col-md-8 mb-3">
                                     <label for="end_logradouro" class="form-label">Logradouro</label>
-                                    <input type="text" class="form-control" id="end_logradouro" name="end_logradouro">
+                                    <input type="text" class="form-control bg-light" id="end_logradouro" name="end_logradouro" readonly>
                                 </div>
 
                                 <div class="col-md-4 mb-3">
-                                    <label for="end_numero" class="form-label">Número (*)</label>
-                                    <input type="text" class="form-control" id="end_numero" name="end_numero">
+                                    <label for="end_numero" class="form-label">Número</label>
+                                    <input type="text" class="form-control bg-light" id="end_numero" name="end_numero" readonly>
                                 </div>
 
                                 <div class="col-md-8 mb-3">
                                     <label for="end_complemento" class="form-label">Complemento</label>
-                                    <input type="text" class="form-control" id="end_complemento" name="end_complemento">
+                                    <input type="text" class="form-control bg-light" id="end_complemento" name="end_complemento" readonly>
                                 </div>
 
                                 <div class="col-md-6 mb-3">
                                     <label for="end_bairro" class="form-label">Bairro</label>
-                                    <input type="text" class="form-control" id="end_bairro" name="end_bairro">
+                                    <input type="text" class="form-control bg-light" id="end_bairro" name="end_bairro" readonly>
                                 </div>
 
                                 <div class="col-md-4 mb-3">
                                     <label for="end_cidade" class="form-label">Cidade</label>
-                                    <input type="text" class="form-control" id="end_cidade" name="end_cidade">
+                                    <input type="text" class="form-control bg-light" id="end_cidade" name="end_cidade" readonly>
                                 </div>
 
                                 <div class="col-md-2 mb-3">
                                     <label for="end_uf" class="form-label">UF</label>
-                                    <input type="text" class="form-control" id="end_uf" name="end_uf" maxlength="2">
+                                    <input type="text" class="form-control bg-light" id="end_uf" name="end_uf" maxlength="2" readonly>
                                 </div>
                             </div>
                         </form>
@@ -180,10 +182,12 @@ if (strtolower($pageType) === 'fornecedor') {
                         <div class="row mt-3">
                             <form id="form-endereco-adicional" class="row">
                                 <input type="hidden" name="entidade_id" id="end_adic_entidade_id">
+                                <input type="hidden" name="end_id" id="end_adic_id">
 
                                 <div class="col-md-6 mb-3">
                                     <label for="end_adic_tipo" class="form-label">Tipo de Endereço (*)</label>
                                     <select class="form-select" id="end_adic_tipo" name="tipo_endereco" required>
+                                        <option value="Principal">Principal</option>
                                         <option value="Comercial">Comercial</option>
                                         <option value="Entrega">Entrega</option>
                                         <option value="Correspondencia">Correspondência</option>
@@ -232,7 +236,13 @@ if (strtolower($pageType) === 'fornecedor') {
 
                                 <div class="col-md-4 mb-3 text-end">
                                     <label class="form-label d-block">&nbsp;</label>
-                                    <button type="submit" class="btn btn-success"><i class="fas fa-save"></i> Adicionar</button>
+                                    <button type="button" id="btn-cancelar-endereco" class="btn btn-secondary me-2" style="display: none;">
+                                        <i class="fas fa-times"></i> Cancelar
+                                    </button>
+
+                                    <button type="submit" id="btn-salvar-endereco" class="btn btn-success">
+                                        <i class="fas fa-plus"></i> Adicionar
+                                    </button>
                                 </div>
                             </form>
                         </div>

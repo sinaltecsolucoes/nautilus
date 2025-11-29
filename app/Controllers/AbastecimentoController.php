@@ -8,17 +8,23 @@
 require_once ROOT_PATH . '/app/Models/AbastecimentoModel.php';
 require_once ROOT_PATH . '/app/Models/FuncionarioModel.php'; // Para listar motoristas
 require_once ROOT_PATH . '/app/Services/PermissaoService.php';
+require_once ROOT_PATH . '/app/Models/EntidadeModel.php';
+require_once ROOT_PATH . '/app/Models/VeiculoModel.php';
 
 class AbastecimentoController
 {
     private $model;
     private $funcionarioModel;
+    private $entidadeModel;
+    private $veiculoModel;
 
     public function __construct()
     {
         if (session_status() == PHP_SESSION_NONE) session_start();
         $this->model = new AbastecimentoModel();
         $this->funcionarioModel = new FuncionarioModel();
+        $this->entidadeModel = new EntidadeModel();
+        $this->veiculoModel = new VeiculoModel();
     }
 
     public function index()
@@ -73,21 +79,25 @@ class AbastecimentoController
     {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') exit;
 
-        // Limpeza de moeda (R$ 1.000,00 -> 1000.00)
-        $cleanMoney = fn($v) => str_replace(',', '.', str_replace(['R$', ' ', '.'], '', $v));
+        // Função auxiliar para converter "1.200,50" -> 1200.50
+        $toDouble = function ($val) {
+            if (empty($val)) return 0.00;
+            return (float) str_replace(',', '.', str_replace('.', '', $val));
+        };
 
         $dados = [
             'funcionario_id' => $_POST['funcionario_id'],
+            'entidade_id'    => $_POST['entidade_id'], // Posto ID
+            'veiculo_id'     => $_POST['veiculo_id'],  // Veículo ID
             'data_abastecimento' => $_POST['data'] . ' ' . $_POST['hora'],
-            'cnpj_posto' => preg_replace('/\D/', '', $_POST['cnpj_posto']),
-            'nome_posto' => $_POST['nome_posto'] ?? '',
             'numero_cupom' => $_POST['numero_cupom'],
             'descricao_combustivel' => $_POST['descricao_combustivel'],
-            'placa_veiculo' => strtoupper($_POST['placa_veiculo']),
-            'valor_unitario' => $cleanMoney($_POST['valor_unitario']),
+            'quilometro_abast' => $_POST['quilometro_abast'],
+
+            // Tratamento de valores monetários
+            'valor_unitario' => $toDouble($_POST['valor_unitario']),
             'total_litros' => str_replace(',', '.', $_POST['total_litros']),
-            'valor_total' => $cleanMoney($_POST['valor_total']),
-            'quilometro_abast' => $_POST['quilometro_abast']
+            'valor_total' => $toDouble($_POST['valor_total']),
         ];
 
         $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
@@ -129,5 +139,22 @@ class AbastecimentoController
         } else {
             echo json_encode(['success' => false, 'message' => 'Erro ao excluir']);
         }
+    }
+
+    public function getPostosOptions()
+    {
+        $term = $_GET['term'] ?? '';
+        // Supondo que você crie esse método no EntidadeModel
+        // Ele deve buscar onde tipo = 'Fornecedor' e (nome LIKE term OR cnpj LIKE term)
+        $resultados = $this->entidadeModel->getFornecedoresOptions($term);
+        echo json_encode(['results' => $resultados]);
+    }
+
+    public function getVeiculosOptions()
+    {
+        $term = $_GET['term'] ?? '';
+        // Método no VeiculoModel
+        $resultados = $this->veiculoModel->getVeiculosOptions($term);
+        echo json_encode(['results' => $resultados]);
     }
 }

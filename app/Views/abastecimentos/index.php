@@ -53,7 +53,9 @@
                             <select name="funcionario_id" id="funcionario_id" class="form-select" required>
                                 <option value="">Selecione...</option>
                                 <?php foreach ($data['motoristas'] as $motorista): ?>
-                                    <option value="<?= $motorista['id'] ?>"><?= $motorista['nome_completo'] ?></option>
+                                    <option value="<?= $motorista['id'] ?>">
+                                        <?= $motorista['nome_comum'] ?? $motorista['nome_completo'] ?? $motorista['nome'] ?? 'Sem Nome' ?>
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -68,27 +70,38 @@
                     </div>
 
                     <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">CNPJ Posto</label>
-                            <input type="text" name="cnpj_posto" id="cnpj_posto" class="form-control">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Posto de Combustível</label>
+                            <select name="entidade_id" id="entidade_id" class="form-select" required style="width: 100%;">
+                                <option></option>
+                            </select>
                         </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Placa</label>
-                            <input type="text" name="placa_veiculo" id="placa_veiculo" class="form-control text-uppercase" required>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Veículo (Placa)</label>
+                            <select name="veiculo_id" id="veiculo_id" class="form-select" required style="width: 100%;">
+                                <option></option>
+                            </select>
                         </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">KM</label>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">KM Atual</label>
                             <input type="number" name="quilometro_abast" id="quilometro_abast" class="form-control">
                         </div>
                     </div>
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Combustível</label>
-                            <input type="text" name="descricao_combustivel" id="descricao_combustivel" class="form-control" value="DIESEL S10">
+                            <label class="form-label">Tipo de Combustível</label>
+                            <select name="descricao_combustivel" id="descricao_combustivel" class="form-select">
+                                <option value="DIESEL S10">DIESEL S10</option>
+                                <option value="GASOLINA COMUM">GASOLINA COMUM</option>
+                                <option value="GASOLINA ADITIVADA">GASOLINA ADITIVADA</option>
+                                <option value="ARLA">ARLA</option>
+                                <option value="ETANOL">ETANOL</option>
+                                <option value="OUTROS">OUTROS</option>
+                            </select>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Cupom</label>
+                            <label class="form-label">Nº Cupom Fiscal</label>
                             <input type="text" name="numero_cupom" id="numero_cupom" class="form-control">
                         </div>
                     </div>
@@ -98,36 +111,24 @@
                     <div class="row">
                         <div class="col-md-4 mb-3">
                             <label class="form-label">Preço Unit. (R$)</label>
-                            <input type="text" name="valor_unitario" id="valor_unitario" class="form-control money" oninput="calcTotal()">
+                            <input type="text" name="valor_unitario" id="valor_unitario" class="form-control money" placeholder="0,00">
                         </div>
                         <div class="col-md-4 mb-3">
                             <label class="form-label">Litros</label>
-                            <input type="text" name="total_litros" id="total_litros" class="form-control" oninput="calcTotal()">
+                            <input type="text" name="total_litros" id="total_litros" class="form-control" placeholder="0,000">
                         </div>
                         <div class="col-md-4 mb-3">
                             <label class="form-label fw-bold text-success">Total (R$)</label>
-                            <input type="text" name="valor_total" id="valor_total" class="form-control fw-bold" readonly>
+                            <input type="text" name="valor_total" id="valor_total" class="form-control fw-bold money" readonly>
                         </div>
                     </div>
 
                     <div class="modal-footer">
-                        <button type="submit" class="btn btn-primary">Salvar</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" id="btn-salvar-abastecimento" class="btn btn-primary">Salvar Lançamento</button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
 </div>
-
-<script>
-    function calcTotal() {
-        let unit = $('#valor_unitario').val().replace('.', '').replace(',', '.').replace('R$ ', '');
-        let lit = $('#total_litros').val().replace(',', '.');
-        if (unit && lit) {
-            let tot = parseFloat(unit) * parseFloat(lit);
-            $('#valor_total').val(tot.toLocaleString('pt-BR', {
-                minimumFractionDigits: 2
-            }));
-        }
-    }
-</script>

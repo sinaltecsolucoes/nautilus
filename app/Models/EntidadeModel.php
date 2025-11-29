@@ -27,10 +27,23 @@ class EntidadeModel
      */
     public function findAllForDataTable(array $params): array
     {
+        // 1. Definição de Variáveis Básicas
         $start = $params['start'] ?? 0;
         $length = $params['length'] ?? 10;
         $searchValue = $params['search']['value'] ?? '';
         $tipo = $params['tipo_entidade'] ?? 'cliente'; // Filtro extra
+
+        // 2. Mapeamento das Colunas (Deve bater com a ordem do seu JavaScript)
+        // 0 = situacao, 1 = tipo, 2 = codigo, 3 = razao, 4 = cnpj, 5 = id (ações)
+        $columnsMap = [
+            0 => 'ent.situacao',
+            1 => 'ent.tipo',
+            2 => 'ent.codigo_interno',
+            3 => 'ent.razao_social',
+            4 => 'ent.nome_fantasia',
+            5 => 'ent.cnpj_cpf',
+            6 => 'ent.id'
+        ];
 
         $where = "WHERE 1=1 ";
         $bindParams = [];
@@ -57,23 +70,43 @@ class EntidadeModel
             $bindParams[':s3'] = "%" . $searchValue . "%";
         }
 
-        // Totais
+        // 3. Lógica de Ordenação Dinâmica 
+        $orderBy = "ORDER BY ent.razao_social ASC"; // Padrão
+
+        // Verifica se o DataTables enviou ordem
+        if (isset($params['order']) && !empty($params['order'])) {
+            $colIndex = intval($params['order'][0]['column']); // Índice da coluna clicada (0, 1, 2...)
+            $colDir = strtoupper($params['order'][0]['dir']); // ASC ou DESC
+
+            // Valida se a direção é segura
+            if (!in_array($colDir, ['ASC', 'DESC'])) {
+                $colDir = 'ASC';
+            }
+
+            // Verifica se a coluna existe no nosso mapa (Segurança contra SQL Injection)
+            if (isset($columnsMap[$colIndex])) {
+                $orderBy = "ORDER BY " . $columnsMap[$colIndex] . " " . $colDir;
+            }
+        }
+
+        // 4. Query de Contagem Total (Sem filtros)
         $sqlTotal = "SELECT COUNT(id) FROM {$this->table}";
         $totalRecords = $this->pdo->query($sqlTotal)->fetchColumn();
 
-        $sqlFiltered = "SELECT COUNT(id) FROM {$this->table} " . $where;
+        // 5. Query de Contagem Filtrada (Com filtros, sem Limit)
+        $sqlFiltered = "SELECT COUNT(id) FROM {$this->table} ent $where";
         $stmtFiltered = $this->pdo->prepare($sqlFiltered);
         $stmtFiltered->execute($bindParams);
         $totalFiltered = $stmtFiltered->fetchColumn();
 
-        // Dados (Faz join com endereço principal para exibir na lista)
+        // 6. Query Principal (Com filtros, Ordenação e Limit)
         $sqlData = "SELECT 
                         ent.id, ent.situacao, ent.tipo, ent.razao_social, ent.nome_fantasia, ent.cnpj_cpf, ent.codigo_interno,
                         end.logradouro, end.numero, end.cidade, end.uf
                     FROM {$this->table} ent
                     LEFT JOIN {$this->tableEnd} end ON ent.id = end.entidade_id AND end.tipo_endereco = 'Principal'
                     {$where} 
-                    ORDER BY ent.razao_social ASC 
+                    {$orderBy} -- Ordenação dinâmica
                     LIMIT :start, :length";
 
         $stmtData = $this->pdo->prepare($sqlData);
@@ -82,11 +115,21 @@ class EntidadeModel
         $stmtData->bindValue(':length', (int)$length, PDO::PARAM_INT);
         $stmtData->execute();
 
+        $resultados = $stmtData->fetchAll(PDO::FETCH_ASSOC);
+
+        // --- Formatação via PHP ---
+        // Itera sobre os resultados para aplicar a máscara
+        foreach ($resultados as &$row) {
+            // Usa a função global no functions.php
+            $row['cnpj_cpf'] = format_documento($row['cnpj_cpf']);
+        }
+        // ---------------------------------------
+
         return [
             "draw" => intval($params['draw'] ?? 1),
             "recordsTotal" => $totalRecords,
             "recordsFiltered" => $totalFiltered,
-            "data" => $stmtData->fetchAll(PDO::FETCH_ASSOC)
+            "data" => $resultados
         ];
     }
 
@@ -283,8 +326,8 @@ class EntidadeModel
     {
         $sql = "SELECT id, tipo_endereco, cep, logradouro, numero, complemento, bairro, cidade, uf 
                 FROM {$this->tableEnd} 
-                WHERE entidade_id = :id AND tipo_endereco != 'Principal' 
-                ORDER BY tipo_endereco";
+                WHERE entidade_id = :id 
+                ORDER BY FIELD (tipo_endereco, 'Principal') DESC, tipo_endereco ASC";
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([':id' => $entidadeId]);
@@ -413,6 +456,67 @@ class EntidadeModel
             $results[] = [
                 'id' => $row['id'],
                 'text' => $name
+            ];
+        }
+        return $results;
+    }
+
+    /**
+     * Busca APENAS Fornecedores ativos para Select2 (Postos de Combustível).
+     * @param string $term Termo de busca (CNPJ/Nome).
+     * @return array Lista formatada.
+     */
+    public function getFornecedoresOptions(string $term = ''): array
+    {
+        // Query base: Filtra Ativos E (Tipo Fornecedor OU Cliente e Fornecedor)
+        $sql = "SELECT 
+                    id, 
+                    razao_social, 
+                    nome_fantasia,
+                    cnpj_cpf
+                FROM {$this->table} 
+                WHERE situacao = 'Ativo'
+                AND (tipo = 'Fornecedor' OR tipo = 'Cliente e Fornecedor')";
+
+        $params = [];
+
+        if (!empty($term)) {
+            // Remove caracteres não numéricos caso o usuário cole um CNPJ formatado
+            $termClean = preg_replace('/\D/', '', $term);
+
+            $sql .= " AND (razao_social LIKE :term OR nome_fantasia LIKE :term OR cnpj_cpf LIKE :term OR cnpj_cpf LIKE :termClean)";
+            $params[':term'] = '%' . $term . '%';
+            $params[':termClean'] = '%' . $termClean . '%';
+        }
+
+        // Ordena por Nome Fantasia (geralmente como chamamos os postos)
+        $sql .= " ORDER BY nome_fantasia ASC LIMIT 30";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+
+        $results = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $name = $row['nome_fantasia'] ?: $row['razao_social'];
+
+            // Formatação do CNPJ para exibição visual (opcional, mas ajuda)
+            $doc = $row['cnpj_cpf'];
+
+            // Monta o texto: "Posto Ipiranga (12.345.678/0001-90)"
+            $displayText = $name;
+            if ($doc) {
+                // Aplica máscara visual rápida se for CNPJ (14 dígitos)
+                if (strlen($doc) === 14) {
+                    $docMask = preg_replace("/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/", "\$1.\$2.\$3/\$4-\$5", $doc);
+                    $displayText .= " ({$docMask})";
+                } else {
+                    $displayText .= " ({$doc})";
+                }
+            }
+
+            $results[] = [
+                'id' => $row['id'],
+                'text' => $displayText
             ];
         }
         return $results;

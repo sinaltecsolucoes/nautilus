@@ -35,19 +35,15 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Sucesso: Usa SweetAlert se disponível, ou alert nativo
-                    if (typeof Swal !== 'undefined') {
-                        Swal.fire('Sucesso!', data.message, 'success');
-                    } else {
-                        alert(data.message);
-                    }
+                    msgSucesso(data.message);
+                   
                 } else {
-                    alert('Erro: ' + data.message);
+                    msgErro('Erro: ' + data.message);
                 }
             })
             .catch(error => {
                 console.error('Erro:', error);
-                alert('Erro de comunicação ao salvar.');
+                msgErro('Erro de comunicação ao salvar.');
             })
             .finally(() => {
                 // Restaura o botão

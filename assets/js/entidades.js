@@ -133,13 +133,30 @@ $(document).ready(function () {
                     ? '<span class="badge bg-success">Ativo</span>'
                     : '<span class="badge bg-danger">Inativo</span>'
             },
-            { "data": "tipo" }, // Cliente/Fornecedor
-            { "data": "razao_social" },
-            { "data": "cnpj_cpf" },
+            {
+                "data": "tipo",
+                "className": "text-center aling-middle",
+            }, // Cliente/Fornecedor/Transportadora
+            {
+                "data": "codigo_interno",
+                "className": "text-center align-middle",
+            },
+            {
+                "data": "razao_social",
+                "className": "align-middle"
+            },
+            {
+                "data": "nome_fantasia",
+                "className": "align-middle"
+            },
+            {
+                "data": "cnpj_cpf",
+                "className": "text-center align-middle",
+            },
             {
                 "data": "id",
                 "orderable": false,
-                "className": "text-center",
+                "className": "text-center align-middle",
                 "render": function (data) {
                     return `
                         <button class="btn btn-warning btn-sm btn-editar-entidade me-1" data-id="${data}">
@@ -152,7 +169,7 @@ $(document).ready(function () {
                 }
             }
         ],
-        "language": { "url": "//cdn.datatables.net/plug-ins/1.13.7/i18n/pt-BR.json" }
+        "language": window.DataTablesPtBr
     });
 
     // =================================================================
@@ -178,12 +195,126 @@ $(document).ready(function () {
             if (response.success) {
                 $modalEntidade.modal('hide');
                 tableEntidades.ajax.reload(null, false);
-                alert(response.message); // Ou use SweetAlert/Toast
+                msgSucesso(response.message);
             } else {
-                alert('Erro: ' + response.message);
+                msgErro(response.message);
             }
-        }).fail(function () {
-            alert('Erro de comunicação ao salvar.');
+        }).fail(function (jqXHR, textStatus, errorThrown) {
+            console.error('Error:', errorThrown);
+            msgErro('Falha na comunicação com o servidor. Tente novamente.');
+
+        });
+    });
+
+    // =================================================================
+    // 5. DATATABLES (ENDEREÇOS ADICIONAIS)
+    // =================================================================
+    tableEnderecos = $('#tabela-enderecos-adicionais').DataTable({
+        "processing": true,
+        "serverSide": false, // Não precisa ser server-side para poucos endereços
+        "ajax": {
+            "url": ROUTE_END_LISTAR,
+            "type": "POST",
+            "data": function (d) {
+                // Envia o ID da entidade que está no input hidden
+                d.entidade_id = $('#end_adic_entidade_id').val();
+            }
+        },
+        "paging": false,            //Remove paginação (Anterio/Próximo)
+        "lengthChange": false,      //Remove "Exibir X Registros"
+        "searching": false,         //Remove barra de pesquisa
+        "info": false,              //Remove "Mostrando 0 de 0"
+        "ordering": false,          //Remove setas de ordenação
+        "columns": [
+            { "data": "tipo_endereco" },
+            {
+                "data": null,
+                "render": function (data) {
+                    return `${data.logradouro}, ${data.numero} ${data.complemento ? '- ' + data.complemento : ''}`;
+                }
+            },
+            {
+                "data": null,
+                "render": function (data) {
+                    return `${data.bairro}, ${data.cidade}/${data.uf}`;
+                }
+            },
+            {
+                "data": "id",
+                "className": "text-center",
+                "render": function (data, type, row) {
+
+                    // Botão Editar (Sempre ativo)
+                    let btnEdit = `
+                    <button class="btn btn-sm btn-info btn-editar-endereco" data-id="${data}" title="Editar">
+                        <i class="fas fa-pencil-alt"></i>
+                    </button>`;
+
+                    // Botão Excluir (Só aparece se NÃO for Principal)
+                    let btnDelete = '';
+                    if (row.tipo_endereco !== 'Principal') {
+                        btnDelete = `
+                        <button class="btn btn-sm btn-danger btn-deletar-endereco ms-1" data-id="${data}" title="Excluir">
+                            <i class="fas fa-trash"></i>
+                        </button>`;
+                    }
+
+                    return btnEdit + btnDelete;
+                }
+            }
+        ],
+        "language": window.DataTablesPtBr
+    });
+
+    // =================================================================
+    // 6. AÇÕES DE ENDEREÇO (EDITAR / EXCLUIR / LIMPAR)
+    // =================================================================
+
+    // BOTAO EDITAR (Carrega dados no form pequeno)
+    $('#tabela-enderecos-adicionais').on('click', '.btn-editar-endereco', function () {
+        const id = $(this).data('id');
+        const $btn = $(this);
+
+        // Feedback visual
+        $btn.html('<i class="fas fa-spinner fa-spin"></i>');
+
+        $.ajax({
+            url: ROUTE_END_GET, // Rota: /entidades/enderecos/get
+            type: 'POST',
+            data: { end_id: id }, // Envia o ID do endereço
+            dataType: 'json'
+        }).done(function (response) {
+            if (response.success) {
+                const d = response.data;
+
+                // Preenche o formulário da aba 2
+                $('#end_adic_id').val(d.id); // ID do endereço
+                $('#end_adic_tipo').val(d.tipo_endereco).trigger('change');
+                $('#end_adic_cep').val(d.cep).trigger('input');
+                $('#end_adic_logradouro').val(d.logradouro);
+                $('#end_adic_numero').val(d.numero);
+                $('#end_adic_complemento').val(d.complemento);
+                $('#end_adic_bairro').val(d.bairro);
+                $('#end_adic_cidade').val(d.cidade);
+                $('#end_adic_uf').val(d.uf);
+
+                // Muda botão Salvar para "Atualizar" (Amarelo)
+                $('#btn-salvar-endereco')
+                    .removeClass('btn-success')
+                    .addClass('btn-warning')
+                    .html('<i class="fas fa-sync"></i> Atualizar');
+
+                // MOSTRA o botão Cancelar
+                $('#btn-cancelar-endereco').show();
+
+                // Rola suavemente até o formulário (útil em telas pequenas)
+                $('#form-endereco-adicional')[0].scrollIntoView({ behavior: 'smooth' });
+
+            } else {
+                msgErro(response.message || 'Dados não encontrados.');
+            }
+        }).always(function () {
+            $btn.html('<i class="fas fa-pencil-alt"></i>');
         });
     });
 
@@ -196,7 +327,7 @@ $(document).ready(function () {
         $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
 
         $.ajax({
-            url: ROUTE_GET, 
+            url: ROUTE_GET,
             type: 'POST',
             data: {
                 ent_codigo: id,
@@ -233,6 +364,14 @@ $(document).ready(function () {
                     // Habilita aba de endereços adicionais
                     $('#endereco-adicional-tab').removeClass('disabled');
 
+                    // Define o ID da entidade no form de endereços (IMPORTANTÍSSIMO)
+                    $('#end_adic_entidade_id').val(d.id);
+
+                    // Recarrega a tabela de endereços filtrando por esse ID
+                    if (tableEnderecos) {
+                        tableEnderecos.ajax.reload();
+                    }
+
                     // Abre o modal
                     $modalEntidade.modal('show');
                 } else {
@@ -241,7 +380,7 @@ $(document).ready(function () {
             })
             .fail(function (jqXHR) {
                 console.error('Erro AJAX:', jqXHR.responseText);
-                alert('Erro ao carregar dados. Verifique o console.');
+                msgErro('Erro ao carregar dados. Verifique o console.');
             })
             .always(function () {
                 $btn.prop('disabled', false).html('<i class="fas fa-pencil-alt"></i>');
@@ -249,16 +388,107 @@ $(document).ready(function () {
     });
 
     // BOTÃO ADICIONAR (LIMPAR)
-    // O botão no HTML deve ter id="btn-adicionar-entidade" se não tiver, adicione ou use o seletor do modal show
     $modalEntidade.on('show.bs.modal', function (event) {
+        const $trigger = $(event.relatedTarget); // Elemento que disparou o modal
         // Se foi aberto pelo botão adicionar (não editar)
-        if (!$(event.relatedTarget).hasClass('btn-editar-entidade')) {
+        if ($trigger.length > 0 && !$trigger.hasClass('btn-editar-entidade')) {
             $formEntidade[0].reset();
-            $('#entidade-id').val('');
+            $('#entidade-id').val(''); //Limpa o ID
             $('#modal-entidade-label').text('Adicionar Novo');
             $('#endereco-adicional-tab').addClass('disabled'); // Bloqueia endereços até salvar
-            updatePessoaFields();
+
+            //Reseta selects e máscaras
+            $('#tipo-pessoa').val('Fisica').trigger('change');
+            $('#situacao').val('Ativo');
+
+            updatePessoaFields(); //Reaplica regras visuais
         }
+    });
+
+    // BOTAO EXCLUIR ENDEREÇO
+    $('#tabela-enderecos-adicionais').on('click', '.btn-deletar-endereco', function () {
+        const id = $(this).data('id');
+
+        confirmarExclusao('Remover endereço?', 'Essa ação não pode ser desfeita.')
+            .then((result) => {
+                if (result.isConfirmed) {
+                    $.ajax({
+                        url: ROUTE_END_DELETAR,
+                        type: 'POST',
+                        data: { end_id: id },
+                        dataType: 'json'
+                    }).done(function (response) {
+                        if (response.success) {
+                            Toast.fire({ icon: 'success', title: 'Endereço removido.' });
+                            tableEnderecos.ajax.reload(null, false);
+                        } else {
+                            msgErro(response.message);
+                        }
+                    });
+                }
+            });
+    });
+
+    // AÇÃO: CANCELAR EDIÇÃO DE ENDEREÇO
+    $('#btn-cancelar-endereco').on('click', function () {
+        // 1. Salva o ID da Entidade Pai (para não perder)
+        const parentId = $('#end_adic_entidade_id').val();
+
+        // 2. Reseta o formulário
+        $formEndereco[0].reset();
+
+        // 3. Restaura os IDs corretos
+        $('#end_adic_entidade_id').val(parentId); // Devolve o ID do Pai
+        $('#end_adic_id').val(''); // Limpa o ID do endereço (Volta a ser Insert)
+
+        // 4. Restaura o visual do botão Salvar
+        $('#btn-salvar-endereco')
+            .removeClass('btn-warning')
+            .addClass('btn-success')
+            .html('<i class="fas fa-plus"></i> Adicionar');
+
+        // 5. Esconde o botão Cancelar
+        $(this).hide();
+    });
+
+    // SUBMIT DO FORMULÁRIO (SALVAR ENDEREÇO ADICIONAL)
+    $formEndereco.on('submit', function (e) {
+        e.preventDefault();
+
+        $.ajax({
+            url: ROUTE_END_SALVAR,
+            type: 'POST',
+            data: $(this).serialize(),
+            dataType: 'json'
+        }).done(function (response) {
+            if (response.success) {
+                // 1.Limpa o form de endereço, mas MANTÉM o ID da entidade
+                const idEntidade = $('#end_adic_entidade_id').val();
+
+                // 2.Reseta o form completo
+                $formEndereco[0].reset();
+
+                // 3. Restaura o ID do Pai e LIMPA o ID do Endereço (para virar insert de novo)
+                $('#end_adic_entidade_id').val(idEntidade);
+                $('#end_adic_id').val('');
+
+                // 4. Volta botão Salvar para "Adicionar" (Verde)
+                $('#btn-salvar-endereco')
+                    .removeClass('btn-warning')
+                    .addClass('btn-success')
+                    .html('<i class="fas fa-plus"></i> Adicionar');
+
+                // ESCONDE o botão Cancelar
+                $('#btn-cancelar-endereco').hide();
+
+                // Recarrega a tabela
+                tableEnderecos.ajax.reload(null, false);
+
+                Toast.fire({ icon: 'success', title: response.message });
+            } else {
+                msgErro(response.message);
+            }
+        });
     });
 
     // MÁSCARAS DE CEP

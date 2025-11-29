@@ -108,15 +108,15 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    Swal.fire('Sucesso!', data.message, 'success');
+                    msgSucesso(data.message);
                     $modal.modal('hide');
                     table.ajax.reload(null, false);
                 } else {
-                    Swal.fire('Erro!', data.message, 'error');
+                    SmsgErro(data.message);
                 }
             })
             .catch(error => {
-                Swal.fire('Erro de comunicação!', 'Não foi possível conectar ao servidor.', 'error');
+                msgErro('Não foi possível conectar ao servidor.');
             });
     });
 
@@ -174,7 +174,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     $('#modal-expedicao-label').text('Editar Expedição Nº ' + dados.numero_carregamento);
                     $modal.modal('show');
                 } else {
-                    Swal.fire('Erro!', response.message, 'error');
+                    msgErro(response.message);
                 }
             }
         });
@@ -185,37 +185,26 @@ document.addEventListener('DOMContentLoaded', function () {
     $('#tabela-expedicoes').on('click', '.btn-deletar', function () {
         const id = $(this).data('id');
         const $row = $(this).parents('tr');
-        const numeroCarga = $row.find('td:eq(0)').text(); // Pega o Nº Carga da primeira coluna
+        const numeroCarga = $row.find('td:eq(0)').text();
 
-        Swal.fire({
-            title: 'Confirmar Exclusão',
-            text: `Deseja DELETAR a Expedição Nº ${numeroCarga}? Se houver registros de Frota ou Custos, a exclusão será bloqueada.`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Sim, Deletar!',
-            cancelButtonText: 'Cancelar'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                $.ajax({
-                    url: ROUTE_DELETAR,
-                    type: 'POST',
-                    data: { exp_id: id, csrf_token: CSRF_TOKEN },
-                    dataType: 'json',
-                    success: function (response) {
-                        if (response.success) {
-                            Swal.fire('Sucesso!', response.message, 'success');
-                            table.ajax.reload(null, false);
-                        } else {
-                            Swal.fire('Erro!', response.message, 'error');
+        confirmarExclusao('Confirmar Exclusão', `Expedição Nº ${numeroCarga}?`)
+            .then((result) => {
+                if (result.isConfirmed) {
+                    $.ajax({
+                        // ... configurações ajax ...
+                        success: function (response) {
+                            if (response.success) {
+                                msgSucesso(response.message);
+                                table.ajax.reload(null, false);
+                            } else {
+                                msgErro(response.message);
+                            }
+                        },
+                        error: function () {
+                            msgErro('Erro de comunicação ao deletar.');
                         }
-                    },
-                    error: function () {
-                        Swal.fire('Erro!', 'Erro de comunicação ao deletar.', 'error');
-                    }
-                });
-            }
-        });
+                    });
+                }
+            });
     });
 });

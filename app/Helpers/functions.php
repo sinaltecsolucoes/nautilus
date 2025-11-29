@@ -102,3 +102,31 @@ if (!function_exists('format_money_db')) {
         return str_replace(',', '.', $valor); // Troca vírgula decimal por ponto
     }
 }
+
+if (!function_exists('format_documento')) {
+    /**
+     * Aplica máscara de CPF ou CNPJ.
+     * @param string $doc Documento puro (apenas números ou sujo).
+     * @return string Documento formatado.
+     */
+    function format_documento($doc)
+    {
+        // Remove tudo que não for dígito
+        $doc = preg_replace("/\D/", '', $doc);
+
+        $len = strlen($doc);
+
+        if ($len === 11) {
+            // CPF: 000.000.000-00
+            return preg_replace("/(\d{3})(\d{3})(\d{3})(\d{2})/", "\$1.\$2.\$3-\$4", $doc);
+        }
+
+        if ($len === 14) {
+            // CNPJ: 00.000.000/0000-00
+            return preg_replace("/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/", "\$1.\$2.\$3/\$4-\$5", $doc);
+        }
+
+        // Se não for nem 11 nem 14, retorna o original (evita sumir com dados errados)
+        return $doc;
+    }
+}

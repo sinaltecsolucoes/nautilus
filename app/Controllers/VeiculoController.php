@@ -61,14 +61,23 @@ class VeiculoController
         }
 
         // NOVO: Coleta e passa todos os parâmetros DataTables (draw, start, length, search)
-        $params = [
+        /*  $params = [
             'draw' => filter_input(INPUT_POST, 'draw', FILTER_VALIDATE_INT) ?? 1,
             'start' => filter_input(INPUT_POST, 'start', FILTER_VALIDATE_INT) ?? 0,
             'length' => filter_input(INPUT_POST, 'length', FILTER_VALIDATE_INT) ?? 10,
             'search' => filter_input(INPUT_POST, 'search', FILTER_DEFAULT, FILTER_REQUIRE_ARRAY),
+        ]; */
+
+        // Parâmetros DataTables
+        $params = [
+            'draw'   => $_POST['draw'] ?? 1,
+            'start'  => $_POST['start'] ?? 0,
+            'length' => $_POST['length'] ?? 10,
+            'search' => $_POST['search']['value'] ?? '',
+            'order'  => $_POST['order'] ?? []
         ];
 
-        try {
+        /* try {
             $output = $this->veiculoModel->findAllForDataTable($params); // Chama o Model corrigido
             echo json_encode($output);
         } catch (\Exception $e) {
@@ -76,6 +85,14 @@ class VeiculoController
             // Se houver erro, retorna JSON com a estrutura do DataTables, mas com erro
             http_response_code(500);
             echo json_encode(["draw" => $params['draw'], "recordsTotal" => 0, "recordsFiltered" => 0, "data" => [], "error" => "Erro ao processar dados."]);
+        }*/
+
+        try {
+            $output = $this->veiculoModel->findAllForDataTable($params);
+            echo json_encode($output);
+        } catch (\Exception $e) {
+            http_response_code(500);
+            echo json_encode(["error" => "Erro interno: " . $e->getMessage()]);
         }
     }
 

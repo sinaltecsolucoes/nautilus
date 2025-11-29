@@ -1,24 +1,41 @@
-# public/.htaccess
-# Local: C:\xampp\htdocs\nautilus\public\
+# Desativa a listagem de diretórios (evita que apareçam as pastas do sistema)
+Options -Indexes
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteBase /nautilus/
+    
+    # Ajuste aqui conforme a URL que você acessa no navegador.
+    # Se você acessa "localhost/nautilus/public/...", mantenha assim.
+    RewriteBase /nautilus/public/
 
     # ==============================================================
-    # 1. ROTAS DA API: CAPTURA /api/... ANTES DE QUALQUER COISA
+    # 1. SEGURANÇA: Bloqueia acesso direto a arquivos .php
+    # Ninguém deve conseguir acessar /views/header.php diretamente, por exemplo.
+    # ==============================================================
+    RewriteCond %{THE_REQUEST} \.php
+    RewriteCond %{REQUEST_URI} !/index\.php$ [NC]
+    RewriteCond %{REQUEST_URI} !/api\.php$ [NC]
+    # Se tentar acessar um .php direto, joga para a home (ou login)
+    RewriteRule .* index.php [L,R=301]
+
+    # ==============================================================
+    # 2. ROTAS DA API
     # ==============================================================
     RewriteRule ^api/(.*)$ api.php?route=$1 [L,QSA]
     RewriteRule ^api$ api.php?route=auth/login [L,QSA]
 
     # ==============================================================
-    # 2. IGNORA ARQUIVOS E PASTAS REAIS (CSS, JS, IMAGENS, etc)
+    # 3. ARQUIVOS REAIS (CSS, JS, Imagens)
+    # Se o arquivo existe de verdade, deixa o navegador carregar.
     # ==============================================================
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
 
     # ==============================================================
-    # 3. TUDO O MAIS → index.php (rotas da aplicação web)
+    # 4. ROTA PADRÃO (Single Page Application / MVC)
+    # Tudo o que não é API e não é arquivo real, cai no index.php
     # ==============================================================
     RewriteRule ^(.*)$ index.php?route=$1 [L,QSA]
+
 </IfModule>

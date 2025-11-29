@@ -10,6 +10,7 @@
 require_once ROOT_PATH . '/app/Models/EntidadeModel.php';
 require_once ROOT_PATH . '/app/Services/PermissaoService.php';
 require_once ROOT_PATH . '/app/Services/EntidadeService.php'; // Nosso serviço CNPJ/CEP
+require_once ROOT_PATH . '/app/Helpers/functions.php';
 
 class EntidadeController
 {
@@ -135,16 +136,20 @@ class EntidadeController
         $searchValue = filter_input(INPUT_POST, 'search', FILTER_DEFAULT, FILTER_REQUIRE_ARRAY)['value'] ?? '';
         $tipoEntidade = filter_input(INPUT_POST, 'tipo_entidade', FILTER_SANITIZE_SPECIAL_CHARS) ?? 'cliente';
 
+        // Captura a ordenação enviada pelo DataTables
+        $order = $_POST['order'] ?? [];
+
         try {
             $resultado = $this->entidadeModel->findAllForDataTable([
                 'start'  => $start,
                 'length' => $length,
                 'search' => ['value' => $searchValue],
                 'tipo_entidade' => $tipoEntidade,
+                'order'  => $order, // Passando ordenação para o Model
                 'draw'   => $draw
             ]);
 
-            // Corrigido: usa as chaves exatas retornadas pelo modelo
+            // Usa as chaves exatas retornadas pelo modelo
             echo json_encode([
                 'draw'            => $draw,
                 'recordsTotal'    => $resultado['recordsTotal'],
@@ -483,5 +488,4 @@ class EntidadeController
             echo json_encode(['success' => false, 'message' => 'Erro no banco de dados.']);
         }
     }
-   
 }

@@ -125,6 +125,8 @@ $routes = [
     'abastecimentos/salvar'  => ['AbastecimentoController', 'salvar'],
     'abastecimentos/get'     => ['AbastecimentoController', 'get'],
     'abastecimentos/deletar' => ['AbastecimentoController', 'deletar'],
+    'abastecimentos/getPostosOptions'   => ['AbastecimentoController', 'getPostosOptions'],
+    'abastecimentos/getVeiculosOptions' => ['AbastecimentoController', 'getVeiculosOptions'],
 
     // Rotas de Relatórios
     'relatorios'                => ['RelatorioController', 'index'],

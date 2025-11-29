@@ -56,9 +56,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (data.success) {
                     tabela.ajax.reload();
                     form.reset();
-                    msgArea.innerHTML = '<div class="alert alert-success">Registro salvo com sucesso!</div>';
+                    msgSucesso('Registro salvo com sucesso!');
+                    document.getElementById('mensagem-manutencao').innerHTML = '';
                 } else {
-                    msgArea.innerHTML = '<div class="alert alert-danger">' + data.message + '</div>';
+                    msgErro(data.message);
                 }
             })
             .catch(error => {

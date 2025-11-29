@@ -12,7 +12,7 @@ require_once ROOT_PATH . '/app/Services/AuditLoggerService.php';
 class VeiculoModel
 {
     private $pdo;
-    private $table = 'VEICULOS';
+    private $table = 'veiculos';
     private $logger;
 
     public function __construct()
@@ -22,31 +22,36 @@ class VeiculoModel
     }
 
     /**
-     * Busca todos os veículos ativos para serem usados em dropdowns (Select2).
-     * @return array Lista de veículos (id, placa, modelo).
+     * Busca veículos ativos para o Select2 com filtro de pesquisa.
+     * @param string $term Termo digitado pelo usuário (Placa ou Modelo).
+     * @return array Lista formatada para o Select2.
      */
-    public function getVeiculosOptions(): array
+    public function getVeiculosOptions(string $term = ''): array
     {
+        // Query base: Apenas veículos ativos
         $sql = "SELECT 
                     id, 
-                    placa, 
-                    modelo, 
                     CONCAT(placa, ' - ', modelo) AS text
                 FROM {$this->table} 
-                WHERE situacao = 'Ativo' 
-                ORDER BY placa ASC";
+                WHERE situacao = 'Ativo'";
 
-        $stmt = $this->pdo->query($sql);
+        $params = [];
 
-        // Retorna no formato [id: x, text: 'Placa - Modelo'] que o JavaScript Select2 espera
-        $results = [];
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $results[] = [
-                'id' => $row['id'],
-                'text' => $row['text']
-            ];
+        // Se o usuário digitou algo, filtramos por Placa OU Modelo
+        if (!empty($term)) {
+            $sql .= " AND (placa LIKE :term OR modelo LIKE :term)";
+            $params[':term'] = '%' . $term . '%';
         }
-        return $results;
+
+        // Ordena e limita a 30 resultados para não travar o navegador
+        $sql .= " ORDER BY placa ASC LIMIT 30";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+
+        // O fetchAll(PDO::FETCH_ASSOC) já retorna o array no formato correto 
+        // se o SELECT tiver os campos 'id' e 'text'
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     /**
@@ -54,6 +59,77 @@ class VeiculoModel
      * @param array $params Parâmetros DataTables (start, length, search).
      * @return array Array formatado para o DataTables.
      */
+    /* public function findAllForDataTable(array $params): array
+    {
+        $start = $params['start'] ?? 0;
+        $length = $params['length'] ?? 10;
+        $searchValue = $params['search'] ?? '';
+
+        // 1. Mapeamento de Colunas (Igual ao JS)
+        // 0: Placa, 1: Marca/Modelo, 2: Ano, 3: Tipo, 4: Situação, 5: Proprietário, 6: ID
+        $columnsMap = [
+            0 => 'v.placa',
+            1 => 'v.modelo',
+            2 => 'v.ano',
+            3 => 'v.tipo_frota',
+            4 => 'v.situacao',
+            5 => 'proprietario_nome', // Alias definido no SELECT
+            6 => 'v.id'
+        ];
+
+        $where = "WHERE 1=1 ";
+        $bindParams = [];
+
+        // Pesquisa
+        if (!empty($searchValue)) {
+            $where .= "AND (v.placa LIKE :s OR v.modelo LIKE :s OR v.marca LIKE :s OR e.nome_fantasia LIKE :s) ";
+            $bindParams[':s'] = '%' . $searchValue . '%';
+        }
+
+        // Ordenação
+        $orderBy = "ORDER BY v.placa ASC"; // Padrão
+        if (isset($params['order']) && !empty($params['order'])) {
+            $colIndex = intval($params['order'][0]['column']);
+            $colDir = strtoupper($params['order'][0]['dir']);
+            if (isset($columnsMap[$colIndex])) {
+                $orderBy = "ORDER BY " . $columnsMap[$colIndex] . " " . ($colDir === 'DESC' ? 'DESC' : 'ASC');
+            }
+        }
+
+        // SQL Base
+        $sqlBase = "FROM {$this->table} v 
+                    LEFT JOIN ENTIDADES e ON v.proprietario_entidade_id = e.id";
+
+        // Totais
+        $totalRecords = $this->pdo->query("SELECT COUNT(id) FROM {$this->table}")->fetchColumn();
+
+        $stmtFiltered = $this->pdo->prepare("SELECT COUNT(v.id) {$sqlBase} {$where}");
+        $stmtFiltered->execute($bindParams);
+        $totalFiltered = $stmtFiltered->fetchColumn();
+
+        // Dados
+        $sqlData = "SELECT 
+                        v.*,
+                        COALESCE(e.nome_fantasia, e.razao_social) AS proprietario_nome
+                    {$sqlBase} 
+                    {$where} 
+                    {$orderBy} 
+                    LIMIT :start, :length";
+
+        $stmt = $this->pdo->prepare($sqlData);
+        foreach ($bindParams as $k => $v) $stmt->bindValue($k, $v);
+        $stmt->bindValue(':start', (int)$start, PDO::PARAM_INT);
+        $stmt->bindValue(':length', (int)$length, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return [
+            "draw" => intval($params['draw'] ?? 1),
+            "recordsTotal" => $totalRecords,
+            "recordsFiltered" => $totalFiltered,
+            "data" => $stmt->fetchAll(PDO::FETCH_ASSOC)
+        ];
+    } */
+
     public function findAllForDataTable(array $params): array
     {
         $draw = $params['draw'] ?? 1;
@@ -61,52 +137,66 @@ class VeiculoModel
         $length = $params['length'] ?? 10;
         $searchValue = $params['search']['value'] ?? '';
 
-        $sqlBase = "FROM VEICULOS v 
-                    LEFT JOIN ENTIDADES e ON v.proprietario_entidade_id = e.id";
+        // Mapeamento para ordenação
+        $columnsMap = [
+            0 => 'v.placa',
+            1 => 'v.modelo',
+            2 => 'v.ano',
+            3 => 'v.tipo_frota',
+            4 => 'v.situacao',
+            5 => 'proprietario_nome',
+            6 => 'v.id'
+        ];
 
-        $bindParams = [];
         $where = "WHERE 1=1 ";
+        $bindParams = [];
 
-        // 1. CONDIÇÃO DA PESQUISA GLOBAL (SEARCH)
         if (!empty($searchValue)) {
-            $where .= "AND (v.placa LIKE :search1 OR v.modelo LIKE :search2 OR e.razao_social LIKE :search3) ";
-            $bindParams[':search1'] = '%' . $searchValue . '%';
-            $bindParams[':search2'] = '%' . $searchValue . '%';
-            $bindParams[':search3'] = '%' . $searchValue . '%';
+            $where .= "AND (v.placa LIKE :s OR v.modelo LIKE :s OR v.marca LIKE :s OR e.nome_fantasia LIKE :s) ";
+            $bindParams[':s'] = '%' . $searchValue . '%';
         }
 
-        // 2. Contagem Total
-        $sqlTotal = "SELECT COUNT(v.id) $sqlBase";
-        $totalRecords = $this->pdo->query("SELECT COUNT(id) FROM VEICULOS")->fetchColumn(); // Total sem filtro
+        // Ordenação
+        $orderBy = "ORDER BY v.placa ASC";
+        if (isset($params['order']) && !empty($params['order'])) {
+            $colIndex = intval($params['order'][0]['column']);
+            $colDir = strtoupper($params['order'][0]['dir']);
+            if (isset($columnsMap[$colIndex])) {
+                $orderBy = "ORDER BY " . $columnsMap[$colIndex] . " " . ($colDir === 'DESC' ? 'DESC' : 'ASC');
+            }
+        }
 
-        // 3. Contagem Filtrada
-        $sqlFiltered = "SELECT COUNT(v.id) $sqlBase $where";
-        $stmtFiltered = $this->pdo->prepare($sqlFiltered);
-        $stmtFiltered->execute($bindParams); // Executa com a pesquisa e o JOIN
+        // SQL Base
+        $sqlBase = "FROM {$this->table} v 
+                    LEFT JOIN entidades e ON v.proprietario_entidade_id = e.id";
+
+        // Totais
+        $totalRecords = $this->pdo->query("SELECT COUNT(id) FROM {$this->table}")->fetchColumn();
+
+        $stmtFiltered = $this->pdo->prepare("SELECT COUNT(v.id) {$sqlBase} {$where}");
+        $stmtFiltered->execute($bindParams);
         $totalFiltered = $stmtFiltered->fetchColumn();
 
-        // 4. Dados
+        // Dados 
         $sqlData = "SELECT 
-                        v.id, v.placa, v.modelo, v.ano, v.tipo_frota, v.situacao,
-                        COALESCE(e.nome_fantasia, e.razao_social) AS proprietario_nome
-                    $sqlBase $where 
-                    ORDER BY v.placa ASC 
+                        v.id, v.placa, v.marca, v.modelo, v.ano, v.tipo_frota, v.situacao,
+                        COALESCE(e.nome_fantasia, e.razao_social, '---') AS proprietario_nome
+                    {$sqlBase} 
+                    {$where} 
+                    {$orderBy} 
                     LIMIT :start, :length";
 
         $stmt = $this->pdo->prepare($sqlData);
-        $stmt->bindValue(':start', (int) $start, PDO::PARAM_INT);
-        $stmt->bindValue(':length', (int) $length, PDO::PARAM_INT);
-        foreach ($bindParams as $key => &$value) { // Vincula os parâmetros de pesquisa
-            $stmt->bindValue($key, $value);
-        }
+        foreach ($bindParams as $k => $v) $stmt->bindValue($k, $v);
+        $stmt->bindValue(':start', (int)$start, PDO::PARAM_INT);
+        $stmt->bindValue(':length', (int)$length, PDO::PARAM_INT);
         $stmt->execute();
-        $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         return [
-            "draw" => (int) $draw,
-            "recordsTotal" => (int) $totalRecords,
-            "recordsFiltered" => (int) $totalFiltered,
-            "data" => $data
+            "draw" => intval($draw),
+            "recordsTotal" => intval($totalRecords),
+            "recordsFiltered" => intval($totalFiltered),
+            "data" => $stmt->fetchAll(PDO::FETCH_ASSOC)
         ];
     }
 

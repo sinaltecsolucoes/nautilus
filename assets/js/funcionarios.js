@@ -19,27 +19,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const $confirmarSenhaInput = $('#funcionario-confirmar-senha');
     const $btnSalvar = $('#btn-salvar-funcionario');
 
-    // ===============================================================
-    // FUNÇÕES AUXILIARES (NOVO: SweetAlert2)
-    // ===============================================================
-
-    /**
-     * Exibe o feedback ao usuário usando SweetAlert2.
-     * @param {string} message Mensagem a ser exibida.
-     * @param {string} type 'success', 'error', 'warning', 'info'.
-     */
-    function showSwalFeedback(message, type) {
-        Swal.fire({
-            icon: type === 'danger' ? 'error' : type,
-            title: type === 'danger' ? 'Erro!' : 'Sucesso!',
-            html: message,
-            toast: true,
-            position: 'top-end',
-            showConfirmButton: false,
-            timer: 4000
-        });
-    }
-
     // Lógica do Checkbox de Acesso
     $('#tem_acesso').on('change', function () {
         const isChecked = $(this).is(':checked');
@@ -118,9 +97,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             }
         ],
-        "language": {
-            "url": "//cdn.datatables.net/plug-ins/1.13.7/i18n/pt-BR.json"
-        }
+        "language": window.DataTablesPtBr
     });
 
 
@@ -176,10 +153,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 $modal.modal('show');
             } else {
-                showSwalFeedback(response.message, 'danger');
+                msgErro(msg);
             }
         }).fail(function () {
-            showSwalFeedback('Erro ao buscar dados de edição.', 'danger');
+            msgErro(msg);
         });
     });
 
@@ -194,20 +171,20 @@ document.addEventListener('DOMContentLoaded', function () {
         // VALIDAÇÃO DE SENHA (Apenas se o checkbox de acesso estiver marcado)
         if (temAcesso) {
             if (senhaVal !== confSenhaVal) {
-                showSwalFeedback('Erro: As senhas digitadas não coincidem.', 'warning');
+                msgErro(msg);
                 return;
             }
 
             // Se for novo cadastro E marcou acesso, senha é obrigatória e deve ter min 6 chars
             const isNew = !$idInput.val();
             if (isNew && senhaVal.length < 6) {
-                showSwalFeedback('Erro: A senha deve ter no mínimo 6 caracteres.', 'warning');
+                msgErro(msg);
                 return;
             }
 
             // Se for edição e o usuário digitou algo na senha, valida tamanho
             if (!isNew && senhaVal.length > 0 && senhaVal.length < 6) {
-                showSwalFeedback('Erro: A nova senha deve ter no mínimo 6 caracteres.', 'warning');
+                msgErro(msg);
                 return;
             }
         }
@@ -225,13 +202,13 @@ document.addEventListener('DOMContentLoaded', function () {
             if (response.success) {
                 table.ajax.reload(null, false);
                 $modal.modal('hide');
-                showSwalFeedback(response.message, 'success');
+                msgSucesso(msg);
             } else {
-                showSwalFeedback(response.message, 'danger');
+                msgErro(msg);
             }
         }).fail(function () {
             $btnSalvar.prop('disabled', false);
-            showSwalFeedback('Erro de Comunicação com o servidor.', 'danger');
+            msgErro(msg);
         });
     });
 
@@ -240,41 +217,31 @@ document.addEventListener('DOMContentLoaded', function () {
     // ===============================================================
     $('#tabela-funcionarios').on('click', '.btn-inativar', function () {
         const $this = $(this);
-        if ($this.is(':disabled')) return; // Impede ação se estiver desabilitado
+        if ($this.is(':disabled')) return;
 
         const id = $this.data('id');
         const nome = $this.data('nome');
 
-        Swal.fire({
-            title: 'Tem certeza?',
-            html: `Você irá **INATIVAR** o funcionário **${nome}**. Ele perderá o acesso ao sistema.`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Sim, Inativar!',
-            cancelButtonText: 'Cancelar'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                // Se confirmado, envia a requisição AJAX de exclusão (inativação)
-                $.ajax({
-                    url: BASE_URL + '/usuarios/deletar',
-                    type: 'POST',
-                    data: { funcionario_id: id, csrf_token: CSRF_TOKEN },
-                    dataType: 'json',
-                }).done(function (response) {
-                    if (response.success) {
-                        table.ajax.reload(null, false);
-                        showSwalFeedback(response.message, 'success');
-                    } else {
-                        // NOVO: Usa a mensagem do Controller para erro de Foreign Key
-                        showSwalFeedback(response.message, 'danger');
-                    }
-                }).fail(function () {
-                    showSwalFeedback('Erro de comunicação para inativação.', 'danger');
-                });
-            }
-        });
+        confirmarExclusao('Tem certeza?', `Você irá INATIVAR o funcionário **${nome}**.`)
+            .then((result) => {
+                if (result.isConfirmed) {
+                    $.ajax({
+                        url: BASE_URL + '/usuarios/deletar',
+                        type: 'POST',
+                        data: { funcionario_id: id, csrf_token: CSRF_TOKEN },
+                        dataType: 'json',
+                    }).done(function (response) {
+                        if (response.success) {
+                            table.ajax.reload(null, false);
+                            msgSucesso(response.message);
+                        } else {
+                            msgErro(response.message);
+                        }
+                    }).fail(function () {
+                        msgErro('Erro de comunicação para inativação.');
+                    });
+                }
+            });
     });
 
     // Garante que o ID e Senha sejam limpos ao fechar o modal

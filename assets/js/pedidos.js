@@ -49,7 +49,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (response.success) {
                     $osInput.val(response.os_number);
                 } else {
-                    showToast('Não foi possível gerar o número de OS.', false);
+                    msgErro('Não foi possível gerar o número de OS.');
                 }
             }
         });
@@ -258,38 +258,32 @@ document.addEventListener('DOMContentLoaded', function () {
     $('#tabela-pedidos').on('click', '.btn-deletar', function () {
         const id = $(this).data('id');
         const $row = $(this).parents('tr');
-        const os_numero = $row.find('td:eq(0)').text(); // Pega o número da OS da primeira coluna
+        const os_numero = $row.find('td:eq(0)').text();
 
-        Swal.fire({
-            title: 'Confirmar Exclusão',
-            text: `Deseja realmente DELETAR o Pedido OS: ${os_numero}? Esta ação é IRREVERSÍVEL!`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Sim, Deletar!',
-            cancelButtonText: 'Cancelar'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                $.ajax({
-                    url: ROUTE_DELETAR,
-                    type: 'POST',
-                    data: { pedido_id: id, csrf_token: CSRF_TOKEN },
-                    dataType: 'json',
-                    success: function (response) {
-                        if (response.success) {
-                            showToast(response.message, true);
-                            table.ajax.reload(null, false);
-                        } else {
-                            showToast('Falha ao excluir: ' + response.message, false);
+        // Usa a função global
+        confirmarExclusao('Confirmar Exclusão', `Deseja deletar o Pedido OS: ${os_numero}?`)
+            .then((result) => {
+                if (result.isConfirmed) {
+                    $.ajax({
+                        url: ROUTE_DELETAR,
+                        type: 'POST',
+                        data: { pedido_id: id, csrf_token: CSRF_TOKEN },
+                        dataType: 'json',
+                        success: function (response) {
+                            if (response.success) {
+                                // Usa o Toast global para sucesso rápido
+                                Toast.fire({ icon: 'success', title: response.message });
+                                table.ajax.reload(null, false);
+                            } else {
+                                msgErro('Falha ao excluir: ' + response.message);
+                            }
+                        },
+                        error: function () {
+                            msgErro('Erro de comunicação ao deletar.');
                         }
-                    },
-                    error: function () {
-                        showToast('Erro de comunicação ao deletar.', false);
-                    }
-                });
-            }
-        });
+                    });
+                }
+            });
     });
 
     // --- SUBMISSÃO DO FORMULÁRIO (AJUSTADA PARA SWEETALERT) ---
@@ -308,13 +302,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (data.success) {
                     $modal.modal('hide');
                     table.ajax.reload();
-                    showToast(data.message, true);
+                    msgSucesso(data.message);
                 } else {
-                    showToast(data.message, false);
+                    msgErro(data.message);
                 }
             })
             .catch(error => {
-                showToast('Erro de comunicação com o servidor.', false);
+                msgErro('Erro de comunicação com o servidor.');
             });
     });
 

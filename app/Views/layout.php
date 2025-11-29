@@ -20,6 +20,9 @@ $THEME_JS  = $TEMA_BASE_URL . '/js';
     <link href="<?php echo $TEMA_BASE_URL; ?>/css/styles.css" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet" />
     <link href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
     <link href="<?php echo BASE_URL; ?>/assets/css/style.css" rel="stylesheet" />
 </head>
 
@@ -67,7 +70,6 @@ $THEME_JS  = $TEMA_BASE_URL . '/js';
                                 <a class="nav-link" href="<?php echo BASE_URL; ?>/fornecedores">Fornecedores</a>
                                 <a class="nav-link" href="<?php echo BASE_URL; ?>/transportadoras">Transportadoras</a>
                                 <a class="nav-link" href="<?php echo BASE_URL; ?>/veiculos">Veículos</a>
-                                <a class="nav-link" href="<?php echo BASE_URL; ?>/manutencao">Manutenção</a>
                             </nav>
                         </div>
 
@@ -86,6 +88,7 @@ $THEME_JS  = $TEMA_BASE_URL . '/js';
                             <nav class="sb-sidenav-menu-nested nav">
                                 <a class="nav-link" href="<?php echo BASE_URL; ?>/logistica">Expedição</a>
                                 <a class="nav-link" href="<?php echo BASE_URL; ?>/abastecimentos">Abastecimentos</a>
+                                <a class="nav-link" href="<?php echo BASE_URL; ?>/manutencao">Manutenção</a>
                             </nav>
                         </div>
 
@@ -146,8 +149,10 @@ $THEME_JS  = $TEMA_BASE_URL . '/js';
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
 
     <!-- Outras libs -->
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.mask/1.14.16/jquery.mask.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="<?php echo BASE_URL; ?>/assets/js/app.js"></script>
     <script src="<?php echo $THEME_JS; ?>/scripts.js"></script>
 
     <!-- Script específico da página (entidades.js, funcionarios.js, etc.) -->
