@@ -462,11 +462,11 @@ class EntidadeModel
     }
 
     /**
-     * Busca APENAS Fornecedores ativos para Select2 (Postos de Combustível).
+     * Busca APENAS Clientes ativos para Select2 .
      * @param string $term Termo de busca (CNPJ/Nome).
      * @return array Lista formatada.
      */
-    public function getFornecedoresOptions(string $term = ''): array
+    public function getClienteOptions(string $term = ''): array
     {
         // Query base: Filtra Ativos E (Tipo Fornecedor OU Cliente e Fornecedor)
         $sql = "SELECT 
@@ -476,7 +476,7 @@ class EntidadeModel
                     cnpj_cpf
                 FROM {$this->table} 
                 WHERE situacao = 'Ativo'
-                AND (tipo = 'Fornecedor' OR tipo = 'Cliente e Fornecedor')";
+                AND (tipo = 'Cliente' OR tipo = 'Cliente e Fornecedor')";
 
         $params = [];
 
@@ -520,5 +520,146 @@ class EntidadeModel
             ];
         }
         return $results;
+    }
+
+    /**
+     * Busca Fornecedores ativos para Select2 (Versão POST + SQL Seguro).
+     */
+    public function getFornecedoresOptions(string $term = ''): array
+    {
+        $sql = "SELECT 
+                    id, razao_social, nome_fantasia, cnpj_cpf
+                FROM {$this->table} 
+                WHERE situacao = 'Ativo'
+                AND (tipo = 'Fornecedor' OR tipo = 'Cliente e Fornecedor')";
+
+        $params = [];
+
+        if (!empty($term)) {
+            $termLike = '%' . $term . '%';
+
+            // Início do grupo OR
+            $whereClause = "(razao_social LIKE :p1 OR nome_fantasia LIKE :p2";
+            $params[':p1'] = $termLike;
+            $params[':p2'] = $termLike;
+
+            // Só adiciona busca por CNPJ se tiver números na pesquisa
+            $termClean = preg_replace('/\D/', '', $term);
+            if (!empty($termClean)) {
+                $whereClause .= " OR cnpj_cpf LIKE :p3";
+                $params[':p3'] = '%' . $termClean . '%';
+            }
+
+            $whereClause .= ")"; // Fecha o grupo OR
+            $sql .= " AND " . $whereClause;
+        }
+
+        $sql .= " ORDER BY nome_fantasia ASC LIMIT 30";
+
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+
+            $results = [];
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $name = $row['nome_fantasia'] ?: $row['razao_social'];
+                $doc = $row['cnpj_cpf'];
+
+                // Formatação visual do CNPJ
+                $displayText = $name;
+                if ($doc) {
+                    if (strlen($doc) === 14) {
+                        $docMask = preg_replace("/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/", "\$1.\$2.\$3/\$4-\$5", $doc);
+                        $displayText .= " ({$docMask})";
+                    } else {
+                        $displayText .= " ({$doc})";
+                    }
+                }
+                $results[] = ['id' => $row['id'], 'text' => $displayText];
+            }
+            return $results;
+        } catch (PDOException $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Busca APENAS Fornecedores ativos para Select2 (Postos de Combustível).
+     * @param string $term Termo de busca (CNPJ/Nome).
+     * @return array Lista formatada.
+     */
+    public function getTransportadorasOptions(string $term = ''): array
+    {
+        // Query base: Filtra Ativos E Tipo Transportadoras
+        $sql = "SELECT 
+                    id, 
+                    razao_social, 
+                    nome_fantasia,
+                    cnpj_cpf
+                FROM {$this->table} 
+                WHERE situacao = 'Ativo'
+                AND tipo = 'Transportadora'"; //Filtro Específico
+
+        $params = [];
+
+        if (!empty($term)) {
+            // Remove caracteres não numéricos caso o usuário cole um CNPJ formatado
+            $termClean = preg_replace('/\D/', '', $term);
+
+            $sql .= " AND (razao_social LIKE :term OR nome_fantasia LIKE :term OR cnpj_cpf LIKE :term OR cnpj_cpf LIKE :termClean)";
+            $params[':term'] = '%' . $term . '%';
+            $params[':termClean'] = '%' . $termClean . '%';
+        }
+
+        // Ordena por Nome Fantasia (geralmente como chamamos os postos)
+        $sql .= " ORDER BY nome_fantasia ASC LIMIT 30";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+
+        $results = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $name = $row['nome_fantasia'] ?: $row['razao_social'];
+
+            // Formatação do CNPJ para exibição visual 
+            $doc = $row['cnpj_cpf'];
+
+            // Formatação visual"
+            $displayText = $name;
+            if ($doc) {
+                // Aplica máscara visual rápida se for CNPJ (14 dígitos)
+                if (strlen($doc) === 14) {
+                    $docMask = preg_replace("/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/", "\$1.\$2.\$3/\$4-\$5", $doc);
+                    $displayText .= " ({$docMask})";
+                } else {
+                    $displayText .= " ({$doc})";
+                }
+            }
+
+            $results[] = [
+                'id' => $row['id'],
+                'text' => $displayText
+            ];
+        }
+        return $results;
+    }
+
+    public function findByDocumentOrCode($valor)
+    {
+        $sql = "SELECT id, razao_social, nome_fantasia FROM ENTIDADES 
+            WHERE cnpj_cpf = :valor OR codigo_interno = :valor LIMIT 1";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':valor' => preg_replace('/\D/', '', $valor)]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    public function getNextCodigoInterno(): int
+    {
+        // Como agora é INT, não precisa mais de CAST
+        $sql = "SELECT MAX(codigo_interno) as max_code FROM {$this->table}";
+        $stmt = $this->pdo->query($sql);
+        $max = $stmt->fetchColumn();
+
+        return $max ? (int)$max + 1 : 1;
     }
 }

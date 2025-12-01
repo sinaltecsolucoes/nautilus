@@ -3,132 +3,281 @@
 /**
  * CLASSE MODELO: ManutencaoModel
  * Local: app/Models/ManutencaoModel.php
- * Descrição: Gerencia as operações de CRUD na tabela MANUTENCOES e consultas relacionadas a veículos/custos.
+ * Descrição: Gerencia as operações de CRUD para Manutenções (Header e Itens).
  */
 
 require_once __DIR__ . '/Database.php';
+require_once ROOT_PATH . '/app/Services/AuditLoggerService.php';
 
 class ManutencaoModel
 {
     private $pdo;
-    private $table = 'MANUTENCOES';
+    private $logger;
 
     public function __construct()
     {
         $this->pdo = Database::getInstance()->getConnection();
+        $this->logger = new AuditLoggerService();
     }
 
     /**
-     * Insere um novo registro de manutenção no DB.
-     * @param array $data Dados da manutenção.
-     * @return int|false ID da nova manutenção ou false.
+     * Salva uma manutenção completa (Cabeçalho + Itens) em uma única transação.
      */
-    public function create(array $data)
+    public function createFull(array $header, array $itens, int $userId)
     {
-        $sql = "INSERT INTO {$this->table} (
-                    veiculo_id, fornecedor_id, data_servico, 
-                    servico_peca, tipo_manutencao, valor, data_criacao
-                ) VALUES (
-                    :veiculo_id, :fornecedor_id, :data_servico, 
-                    :servico_peca, :tipo_manutencao, :valor, NOW()
-                )";
-
+        $this->pdo->beginTransaction();
         try {
-            $stmt = $this->pdo->prepare($sql);
+            // 1. Inserir Cabeçalho
+            $sqlHeader = "INSERT INTO manutencao_header 
+                (veiculo_id, fornecedor_id, data_manutencao, km_atual, numero_os, valor_bruto, valor_desconto, valor_liquido)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+
+            $stmt = $this->pdo->prepare($sqlHeader);
             $stmt->execute([
-                ':veiculo_id'       => $data['man_veiculo_id'],
-                ':fornecedor_id'    => $data['man_fornecedor_id'],
-                ':data_servico'     => $data['man_data_servico'],
-                ':servico_peca'     => $data['man_servico_peca'],
-                ':tipo_manutencao'  => $data['man_tipo_manutencao'],
-                ':valor'            => $data['man_valor'],
+                $header['veiculo_id'],
+                $header['fornecedor_id'],
+                $header['data_manutencao'],
+                $header['km_atual'],
+                $header['numero_os'],
+                $header['valor_bruto'],
+                $header['valor_desconto'],
+                $header['valor_liquido']
             ]);
-            return $this->pdo->lastInsertId();
-        } catch (\PDOException $e) {
-            // Em um sistema com auditoria, registraríamos o erro aqui.
+
+            $headerId = $this->pdo->lastInsertId();
+
+            // 2. Inserir Itens
+            $sqlItem = "INSERT INTO manutencao_itens 
+                (header_id, tipo, descricao, valor_pecas, valor_mao_obra, valor_total_item, meses_rateio)
+                VALUES (?, ?, ?, ?, ?, ?, ?)";
+            $stmtItem = $this->pdo->prepare($sqlItem);
+
+            foreach ($itens as $item) {
+                $stmtItem->execute([
+                    $headerId,
+                    $item['tipo'],
+                    $item['descricao'],
+                    $item['valor_pecas'],
+                    $item['valor_mao_obra'],
+                    $item['valor_total_item'],
+                    $item['meses_rateio']
+                ]);
+            }
+
+            // Log de Auditoria
+            $this->logger->log('CREATE', 'manutencao_header', $headerId, null, $header, $userId);
+
+            $this->pdo->commit();
+            return $headerId;
+        } catch (Exception $e) {
+            $this->pdo->rollBack();
             throw $e;
         }
     }
 
     /**
-     * Busca todos os registros de manutenção para o DataTables (CORRIGIDO: BIND DE PARÂMETROS).
-     * @param array $params Parâmetros DataTables.
-     * @return array Dados formatados.
+     * Busca dados para o DataTables (Server-Side).
      */
     public function findAllForDataTable(array $params): array
     {
         $draw = $params['draw'] ?? 1;
         $start = $params['start'] ?? 0;
         $length = $params['length'] ?? 10;
-        $searchValue = $params['search']['value'] ?? '';
+        // Trata se search vier como array ou string
+        $search = is_array($params['search']) ? ($params['search']['value'] ?? '') : ($params['search'] ?? '');
 
-        $sqlBase = "FROM MANUTENCOES m 
-                    JOIN VEICULOS v ON m.veiculo_id = v.id
-                    JOIN ENTIDADES f ON m.fornecedor_id = f.id";
+        // Mapeamento de colunas para ordenação
+        $columnsMap = [
+            0 => 'mh.data_manutencao',
+            1 => 'v.placa',
+            2 => 'e.nome_fantasia',
+            3 => 'mh.numero_os',
+            4 => 'mh.valor_liquido',
+            5 => 'mh.id'
+        ];
 
-        $bindParams = [];
         $where = "WHERE 1=1 ";
+        $bindParams = [];
 
-        // 1. CONDIÇÃO DA PESQUISA GLOBAL (SEARCH)
-        if (!empty($searchValue)) {
-            // Usando placeholders nomeados para evitar HY093 (como fizemos em Entidades)
-            $where .= "AND (v.placa LIKE :search1 OR m.servico_peca LIKE :search2 OR f.razao_social LIKE :search3) ";
-            $bindParams[':search1'] = '%' . $searchValue . '%';
-            $bindParams[':search2'] = '%' . $searchValue . '%';
-            $bindParams[':search3'] = '%' . $searchValue . '%';
+       if (!empty($search)) {
+            $searchTerm = "%$search%";
+            
+            $where .= "AND (
+                v.placa LIKE :s1 OR 
+                e.nome_fantasia LIKE :s2 OR 
+                mh.numero_os LIKE :s3 OR
+                -- BUSCA PROFUNDA: Verifica se existe algum item com essa descrição vinculado a este cabeçalho
+                EXISTS (SELECT 1 FROM manutencao_itens mi_busca WHERE mi_busca.header_id = mh.id AND mi_busca.descricao LIKE :s4)
+            ) ";
+            
+            $bindParams[':s1'] = $searchTerm;
+            $bindParams[':s2'] = $searchTerm;
+            $bindParams[':s3'] = $searchTerm;
+            $bindParams[':s4'] = $searchTerm; // Novo parâmetro para a subquery
         }
 
-        // 2. Contagem Total
-        $sqlTotal = "SELECT COUNT(m.id) $sqlBase";
-        $totalRecords = $this->pdo->query("SELECT COUNT(id) FROM MANUTENCOES")->fetchColumn();
+        // Ordenação Padrão: Data Crescente
+        $orderBy = "ORDER BY mh.data_manutencao ASC";
+        if (isset($params['order']) && !empty($params['order'])) {
+            $colIndex = intval($params['order'][0]['column']);
+            $colDir = strtoupper($params['order'][0]['dir']);
+            if (isset($columnsMap[$colIndex])) {
+                $orderBy = "ORDER BY " . $columnsMap[$colIndex] . " " . ($colDir === 'ASC' ? 'ASC' : 'DESC');
+            }
+        }
 
-        // 3. Contagem Filtrada
-        $sqlFiltered = "SELECT COUNT(m.id) $sqlBase $where";
-        $stmtFiltered = $this->pdo->prepare($sqlFiltered);
-        $stmtFiltered->execute($bindParams);
-        $totalFiltered = $stmtFiltered->fetchColumn();
+        $sqlBase = "FROM manutencao_header mh
+                    LEFT JOIN veiculos v ON mh.veiculo_id = v.id
+                    LEFT JOIN entidades e ON mh.fornecedor_id = e.id";
 
-        // 4. Dados
+        // Totais
+        $totalRecords = $this->pdo->query("SELECT COUNT(id) FROM manutencao_header")->fetchColumn();
+
+        $stmtFilt = $this->pdo->prepare("SELECT COUNT(mh.id) {$sqlBase} {$where}");
+        $stmtFilt->execute($bindParams);
+        $totalFiltered = $stmtFilt->fetchColumn();
+
+        // Dados finais com concatenação do nome do veículo e contagem de serviços
         $sqlData = "SELECT 
-                        m.id, m.data_servico, m.servico_peca, m.valor, m.tipo_manutencao, 
-                        v.placa, f.nome_fantasia AS fornecedor_nome
-                    $sqlBase $where 
-                    ORDER BY m.data_servico DESC 
-                    LIMIT :start, :length";
+                        mh.*, 
+                        CONCAT(
+                            IF(v.codigo_veiculo IS NOT NULL AND v.codigo_veiculo != '', CONCAT(v.codigo_veiculo, ' - '), ''), 
+                            v.placa
+                        ) AS veiculo_nome,
+                        e.nome_fantasia AS fornecedor_nome,
+                        (SELECT COUNT(*) FROM manutencao_itens mi WHERE mi.header_id = mh.id) as qtd_servicos
+                    {$sqlBase} {$where} {$orderBy} LIMIT :start, :length";
 
-        $stmtData = $this->pdo->prepare($sqlData);
-        $stmtData->bindValue(':start', (int) $start, PDO::PARAM_INT);
-        $stmtData->bindValue(':length', (int) $length, PDO::PARAM_INT);
-        foreach ($bindParams as $key => &$value) {
-            $stmtData->bindValue($key, $value);
-        }
-        $stmtData->execute();
-        $data = $stmtData->fetchAll(PDO::FETCH_ASSOC);
+        $stmt = $this->pdo->prepare($sqlData);
+        foreach ($bindParams as $k => $v) $stmt->bindValue($k, $v);
+        $stmt->bindValue(':start', (int)$start, PDO::PARAM_INT);
+        $stmt->bindValue(':length', (int)$length, PDO::PARAM_INT);
+        $stmt->execute();
 
         return [
-            "draw" => (int) $draw,
-            "recordsTotal" => (int) $totalRecords,
-            "recordsFiltered" => (int) $totalFiltered,
-            "data" => $data
+            "draw" => intval($draw),
+            "recordsTotal" => intval($totalRecords),
+            "recordsFiltered" => intval($totalFiltered),
+            "data" => $stmt->fetchAll(PDO::FETCH_ASSOC)
         ];
     }
 
     /**
-     * Busca todos os dados de manutenção para a geração do PDF.
-     * @return array Dados completos.
+     * Busca todos os dados de uma manutenção (Header + Itens) para visualização/edição.
      */
-    public function findAllRelatorioData(): array
+    public function findFull($id)
     {
-        $sql = "SELECT 
-                    m.data_servico, m.servico_peca, m.valor, 
-                    v.placa, 
-                    f.nome_fantasia AS fornecedor_nome
-                FROM MANUTENCOES m 
-                JOIN VEICULOS v ON m.veiculo_id = v.id
-                JOIN ENTIDADES f ON m.fornecedor_id = f.id
-                ORDER BY m.data_servico DESC";
+        // 1. Header
+        $sqlHeader = "SELECT mh.*, 
+                             v.placa as veiculo_placa, v.codigo_veiculo,
+                             e.nome_fantasia as fornecedor_nome
+                      FROM manutencao_header mh
+                      LEFT JOIN veiculos v ON mh.veiculo_id = v.id
+                      LEFT JOIN entidades e ON mh.fornecedor_id = e.id
+                      WHERE mh.id = ?";
+        $stmt = $this->pdo->prepare($sqlHeader);
+        $stmt->execute([$id]);
+        $header = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        $stmt = $this->pdo->query($sql);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (!$header) return null;
+
+        // Formata nome do veículo para o Select2
+        $header['veiculo_nome_completo'] = ($header['codigo_veiculo'] ? $header['codigo_veiculo'] . ' - ' : '') . $header['veiculo_placa'];
+
+        // 2. Itens
+        $sqlItens = "SELECT * FROM manutencao_itens WHERE header_id = ?";
+        $stmtItem = $this->pdo->prepare($sqlItens);
+        $stmtItem->execute([$id]);
+        $itens = $stmtItem->fetchAll(PDO::FETCH_ASSOC);
+
+        return ['header' => $header, 'itens' => $itens];
+    }
+
+    /**
+     * Exclui uma manutenção (o banco deleta os itens em cascata).
+     */
+    public function delete(int $id, int $userId)
+    {
+        $this->pdo->beginTransaction();
+        try {
+            // Busca dados antigos para log
+            $sqlOld = "SELECT * FROM manutencao_header WHERE id = ?";
+            $stmtOld = $this->pdo->prepare($sqlOld);
+            $stmtOld->execute([$id]);
+            $antigo = $stmtOld->fetch(PDO::FETCH_ASSOC);
+
+            // Deleta
+            $stmt = $this->pdo->prepare("DELETE FROM manutencao_header WHERE id = ?");
+            $success = $stmt->execute([$id]);
+
+            if ($success) {
+                $this->logger->log('DELETE', 'manutencao_header', $id, $antigo, null, $userId);
+            }
+
+            $this->pdo->commit();
+            return $success;
+        } catch (Exception $e) {
+            $this->pdo->rollBack();
+            return false;
+        }
+    }
+
+    /**
+     * Atualiza uma manutenção completa (Header + Substituição de Itens).
+     */
+    public function updateFull(int $id, array $header, array $itens, int $userId)
+    {
+        $this->pdo->beginTransaction();
+        try {
+            // 1. Atualiza o Cabeçalho
+            $sqlHeader = "UPDATE manutencao_header SET 
+                veiculo_id=?, fornecedor_id=?, data_manutencao=?, km_atual=?, numero_os=?, 
+                valor_bruto=?, valor_desconto=?, valor_liquido=?, atualizado_em=NOW()
+                WHERE id=?";
+
+            $stmt = $this->pdo->prepare($sqlHeader);
+            $stmt->execute([
+                $header['veiculo_id'],
+                $header['fornecedor_id'],
+                $header['data_manutencao'],
+                $header['km_atual'],
+                $header['numero_os'],
+                $header['valor_bruto'],
+                $header['valor_desconto'],
+                $header['valor_liquido'],
+                $id
+            ]);
+
+            // 2. Limpa os itens antigos (Estratégia de Substituição)
+            $stmtDel = $this->pdo->prepare("DELETE FROM manutencao_itens WHERE header_id = ?");
+            $stmtDel->execute([$id]);
+
+            // 3. Reinsere os itens atualizados
+            $sqlItem = "INSERT INTO manutencao_itens 
+                (header_id, tipo, descricao, valor_pecas, valor_mao_obra, valor_total_item, meses_rateio)
+                VALUES (?, ?, ?, ?, ?, ?, ?)";
+            $stmtItem = $this->pdo->prepare($sqlItem);
+
+            foreach ($itens as $item) {
+                $stmtItem->execute([
+                    $id, // Usa o ID do cabeçalho existente
+                    $item['tipo'],
+                    $item['descricao'],
+                    $item['valor_pecas'],
+                    $item['valor_mao_obra'],
+                    $item['valor_total_item'],
+                    $item['meses_rateio']
+                ]);
+            }
+
+            // Log
+            $this->logger->log('UPDATE', 'manutencao_header', $id, null, $header, $userId);
+
+            $this->pdo->commit();
+            return true;
+        } catch (Exception $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
     }
 }

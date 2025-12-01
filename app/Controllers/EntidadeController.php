@@ -213,31 +213,59 @@ class EntidadeController
                 $newId = $id;
             } else {
                 // CREATE
-                $newId = $this->entidadeModel->create($dadosEntidade, $userId); // CORRETO: array + int
+                $newId = $this->entidadeModel->create($dadosEntidade, $userId);
                 $message = 'Entidade cadastrada com sucesso!';
             }
+
+            // LIMPA O BUFFER ANTES (Segurança extra)
+            if (ob_get_length()) ob_clean();
 
             echo json_encode([
                 'success'     => true,
                 'message'     => $message,
                 'ent_codigo'  => $newId
             ]);
+
+            exit;
         } catch (\PDOException $e) {
+
+            if (ob_get_length()) ob_clean();
             $errorCode = $e->getCode();
 
-            if ($errorCode === '23000') {
-                // Duplicidade de CNPJ/CPF ou código interno
-                $message = "Erro: CNPJ/CPF ou Código Interno já cadastrado.";
-            } else {
-                $message = "Erro no banco de dados: " . $e->getMessage();
-            }
+            $errorMessage = $e->getMessage();
 
-            http_response_code(500);
-            echo json_encode([
-                'success' => false,
-                'message' => $message
-            ]);
+            if ($errorCode === '23000') {
+                // Detecta duplicidade por CNPJ/CPF ou Código Interno
+                if (
+                    strpos($errorMessage, 'cnpj_cpf_unique') !== false ||
+                    strpos($errorMessage, 'codigo_interno_unique') !== false
+                ) {
+
+                    // Busca a entidade existente para pegar o ID
+                    $campo = strpos($errorMessage, 'cnpj_cpf_unique') !== false ? 'cnpj_cpf' : 'codigo_interno';
+                    $valor = $_POST[$campo] ?? $_POST['cnpj_cpf'] ?? '';
+
+                    $entidadeExistente = $this->entidadeModel->findByDocumentOrCode($valor);
+
+                    echo json_encode([
+                        'success' => false,
+                        'error_type' => 'duplicado',
+                        'entidade_id' => $entidadeExistente['id'] ?? null,
+                        'message' => "Já existe um cadastro com esse " .
+                            ($campo === 'cnpj_cpf' ? 'CNPJ/CPF' : 'Código Interno') . "."
+                    ]);
+                    exit;
+                }
+            }
         }
+
+        // Outros erros
+        echo json_encode([
+            'success' => false,
+            'error_type' => 'erro_servidor',
+            'message' => 'Erro interno no servidor. Tente novamente.'
+        ]);
+        exit;
     }
 
     /**
@@ -273,7 +301,7 @@ class EntidadeController
      * Rota AJAX para retornar opções de Clientes ativos para Select2.
      * Retorna no formato esperado pelo Select2: { results: [...] }
      */
-    public function getClientesOptions()
+    /* public function getClientesOptions()
     {
         $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
         // A permissão para 'Ler' Entidades já deve bastar para esta busca
@@ -307,7 +335,7 @@ class EntidadeController
             error_log("Erro em getClientesOptions: " . $e->getMessage());
             echo json_encode(['results' => [], 'error' => 'Erro ao buscar clientes.']);
         }
-    }
+    } */
 
     /**
      * Deleta uma entidade (POST).
@@ -486,6 +514,31 @@ class EntidadeController
             }
         } catch (\PDOException $e) {
             echo json_encode(['success' => false, 'message' => 'Erro no banco de dados.']);
+        }
+    }
+
+    /**
+     * Rota AJAX: Retorna o próximo código interno formatado (Ex: 0045).
+     */
+    public function getProximoCodigo()
+    {
+        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        // Permissão de Leitura já basta para gerar o código
+        if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Ler')) {
+            echo json_encode(['success' => false, 'code' => '']);
+            exit;
+        }
+
+        try {
+            $nextId = $this->entidadeModel->getNextCodigoInterno();
+
+            // Formata para 4 dígitos (ex: 1 -> "0001", 50 -> "0050")
+            // Se for mais dígitos, mudar o 4 para 6
+            $formattedCode = str_pad($nextId, 4, '0', STR_PAD_LEFT);
+
+            echo json_encode(['success' => true, 'code' => $formattedCode]);
+        } catch (\Exception $e) {
+            echo json_encode(['success' => false, 'code' => '']);
         }
     }
 }

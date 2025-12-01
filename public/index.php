@@ -64,33 +64,37 @@ $routes = [
     'transportadoras'   => ['EntidadeController', 'index'],
 
     // Rotas de Manutenção
-    'manutencao'                    => ['ManutencaoController', 'index'],
-    'manutencao/listar'             => ['ManutencaoController', 'listarManutencoes'],
-    'manutencao/salvar'             => ['ManutencaoController', 'salvarManutencao'],
-    'manutencao/veiculos-options'   => ['ManutencaoController', 'getVeiculosOptions'],
-    'manutencao/fornecedores-options' => ['ManutencaoController', 'getFornecedoresOptions'],
+    'manutencao'                        => ['ManutencaoController', 'index'],
+    'manutencao/listar'                 => ['ManutencaoController', 'listar'],
+    'manutencao/salvar'                 => ['ManutencaoController', 'salvar'],
+    'manutencao/get'                    => ['ManutencaoController', 'get'],
+    'manutencao/deletar'                => ['ManutencaoController', 'deletar'],
+    'manutencao/getVeiculosOptions'     => ['ManutencaoController', 'getVeiculosOptions'],
+    'manutencao/getFornecedoresOptions' => ['ManutencaoController', 'getFornecedoresOptions'],
 
     // Rotas de Veículos
-    'veiculos'          => ['VeiculoController', 'index'],
-    'veiculos/listar'   => ['VeiculoController', 'listarVeiculos'],
-    'veiculos/salvar'   => ['VeiculoController', 'salvarVeiculo'],
-    'veiculos/get'      => ['VeiculoController', 'getVeiculo'],
-    'veiculos/deletar'  => ['VeiculoController', 'deleteVeiculo'],
+    'veiculos'                           => ['VeiculoController', 'index'],
+    'veiculos/listar'                    => ['VeiculoController', 'listarVeiculos'],
+    'veiculos/salvar'                    => ['VeiculoController', 'salvarVeiculo'],
+    'veiculos/get'                       => ['VeiculoController', 'getVeiculo'],
+    'veiculos/deletar'                   => ['VeiculoController', 'deleteVeiculo'],
+    'veiculos/getProprietariosOptions'   => ['VeiculoController', 'getProprietariosOptions'],
 
     // Rotas de Integração (AJAX)
     'entidades/api-busca'           => ['EntidadeController', 'buscarApiDados'],
     'entidades/clientes-options'    => ['EntidadeController', 'getClientesOptions'],
+    'entidades/proximo-codigo'      => ['EntidadeController', 'getProximoCodigo'],
 
     // Rotas de Ações CRUD para Entidades
-    'entidades/listar' => ['EntidadeController', 'listarEntidades'],
-    'entidades/getEntidade'    => ['EntidadeController', 'getEntidade'],
-    'entidades/salvar' => ['EntidadeController', 'salvarEntidade'],
-    'entidades/deletar' => ['EntidadeController', 'deleteEntidade'],
+    'entidades/listar'          => ['EntidadeController', 'listarEntidades'],
+    'entidades/getEntidade'     => ['EntidadeController', 'getEntidade'],
+    'entidades/salvar'          => ['EntidadeController', 'salvarEntidade'],
+    'entidades/deletar'         => ['EntidadeController', 'deleteEntidade'],
 
     // Rotas de Ações CRUD para Endereços Adicionais
-    'entidades/enderecos/listar' => ['EntidadeController', 'listarEnderecosAdicionais'],
-    'entidades/enderecos/salvar' => ['EntidadeController', 'salvarEnderecoAdicional'],
-    'entidades/enderecos/get'    => ['EntidadeController', 'getEnderecoAdicional'],
+    'entidades/enderecos/listar'  => ['EntidadeController', 'listarEnderecosAdicionais'],
+    'entidades/enderecos/salvar'  => ['EntidadeController', 'salvarEnderecoAdicional'],
+    'entidades/enderecos/get'     => ['EntidadeController', 'getEnderecoAdicional'],
     'entidades/enderecos/deletar' => ['EntidadeController', 'deleteEnderecoAdicional'],
 
     // Rotas de Funcionários
@@ -101,13 +105,13 @@ $routes = [
     'usuarios/deletar'  => ['FuncionarioController', 'deleteFuncionario'],
 
     // Rotas de Vendas/Pedidos
-    'pedidos'           => ['PedidoController', 'index'],
-    'pedidos/listar'    => ['PedidoController', 'listarPedidos'],
-    'pedidos/salvar'    => ['PedidoController', 'salvarPedido'],
+    'pedidos'                  => ['PedidoController', 'index'],
+    'pedidos/listar'           => ['PedidoController', 'listarPedidos'],
+    'pedidos/salvar'           => ['PedidoController', 'salvarPedido'],
     'pedidos/clientes-options' => ['PedidoController', 'getClientesOptions'],
-    'pedidos/get'       => ['PedidoController', 'getPedido'],
-    'pedidos/deletar'   => ['PedidoController', 'deletePedido'],
-    'pedidos/next-os'   => ['PedidoController', 'getNextOSNumber'],
+    'pedidos/get'              => ['PedidoController', 'getPedido'],
+    'pedidos/deletar'          => ['PedidoController', 'deletePedido'],
+    'pedidos/next-os'          => ['PedidoController', 'getNextOSNumber'],
 
     // Rotas de Logística/Expedição
     'logistica'                 => ['ExpedicaoController', 'index'],
@@ -120,11 +124,11 @@ $routes = [
     'expedicao/pedidos-pendentes' => ['ExpedicaoController', 'getPedidosPendentesOptions'],
 
     // Rotas de Abastecimento (Frota)
-    'abastecimentos'         => ['AbastecimentoController', 'index'],
-    'abastecimentos/listar'  => ['AbastecimentoController', 'listar'],
-    'abastecimentos/salvar'  => ['AbastecimentoController', 'salvar'],
-    'abastecimentos/get'     => ['AbastecimentoController', 'get'],
-    'abastecimentos/deletar' => ['AbastecimentoController', 'deletar'],
+    'abastecimentos'                    => ['AbastecimentoController', 'index'],
+    'abastecimentos/listar'             => ['AbastecimentoController', 'listar'],
+    'abastecimentos/salvar'             => ['AbastecimentoController', 'salvar'],
+    'abastecimentos/get'                => ['AbastecimentoController', 'get'],
+    'abastecimentos/deletar'            => ['AbastecimentoController', 'deletar'],
     'abastecimentos/getPostosOptions'   => ['AbastecimentoController', 'getPostosOptions'],
     'abastecimentos/getVeiculosOptions' => ['AbastecimentoController', 'getVeiculosOptions'],
 

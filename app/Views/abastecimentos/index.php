@@ -1,8 +1,17 @@
+<?php
+
+/**
+ * VIEW: Cadastro de Abastecimentos
+ * Local: app/Views/abastecimentos/index.php
+ */
+$csrf_token = $data['csrf_token'] ?? '';
+?>
+
 <h1 class="h3 mb-2 text-gray-800">Abastecimentos</h1>
 
 <div id="abastecimento-data"
     data-base-url="<?php echo BASE_URL; ?>"
-    data-csrf-token="<?php echo htmlspecialchars($data['csrf_token']); ?>"
+    data-csrf-token="<?php echo htmlspecialchars($csrf_token); ?>"
     style="display: none;">
 </div>
 
@@ -15,7 +24,7 @@
     </div>
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-bordered" id="tabela-abastecimentos" width="100%" cellspacing="0">
+            <table class="table table-bordered table-hover" id="tabela-abastecimentos" width="100%" cellspacing="0">
                 <thead>
                     <tr>
                         <th>Data/Hora</th>

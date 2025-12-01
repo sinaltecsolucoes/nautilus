@@ -59,6 +59,18 @@ $(document).ready(function () {
         }
     }
 
+    function carregarEntidadeParaEdicao(id) {
+        $.post(ROUTE_GET, { entidade_id: id, csrf_token: CSRF_TOKEN })
+            .done(function (res) {
+                let data = typeof res === 'string' ? JSON.parse(res) : res;
+                if (data.success && data.data) {
+                    preencherModalComDados(data.data); // Sua função existente de edição
+                    $('#modal-entidade-label').text('Editar Entidade');
+                    $modalEntidade.modal('show');
+                }
+            });
+    }
+
     // Inicializa máscaras
     updatePessoaFields();
     $tipoPessoaSelect.on('change', updatePessoaFields);
@@ -139,6 +151,11 @@ $(document).ready(function () {
             }, // Cliente/Fornecedor/Transportadora
             {
                 "data": "codigo_interno",
+                "render": function (data) {
+                    //Se tiver dado, formata com 4 dígitos (ex: 15 -> 0015)
+                    //se for nulo, retorna vazio
+                    return data ? data.toString().padStart(4, '0') : '';
+                },
                 "className": "text-center align-middle",
             },
             {
@@ -192,18 +209,49 @@ $(document).ready(function () {
             contentType: false,
             dataType: 'json'
         }).done(function (response) {
+            // Se o PHP retornou HTML ou erro (raramente), tenta parsear
+            if (typeof response === 'string') {
+                try { response = JSON.parse(response); } catch (e) { }
+            }
+
             if (response.success) {
                 $modalEntidade.modal('hide');
                 tableEntidades.ajax.reload(null, false);
-                msgSucesso(response.message);
-            } else {
+                msgSucesso(response.message || 'Salvo com sucesso!');
+                return;
+            }
+
+            // === TRATAMENTO INTELIGENTE DE ERROS ===
+            if (response.error_type === 'duplicado' && response.entidade_id) {
+                const nome = response.message.split('esse ')[1] || 'registro';
+
+                Swal.fire({
+                    title: 'Cadastro já existe!',
+                    text: `${response.message} Deseja abrir para edição?`,
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Sim, editar',
+                    cancelButtonText: 'Não, cancelar',
+                    reverseButtons: true
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        // Abre o modal e carrega os dados da entidade existente
+                        carregarEntidadeParaEdicao(response.entidade_id);
+                    }
+                });
+            }
+            else if (response.message) {
                 msgErro(response.message);
             }
-        }).fail(function (jqXHR, textStatus, errorThrown) {
-            console.error('Error:', errorThrown);
-            msgErro('Falha na comunicação com o servidor. Tente novamente.');
+            else {
+                msgErro('Ocorreu um erro ao salvar. Verifique os dados e tente novamente.');
+            }
+        })
+            .fail(function (jqXHR, textStatus, errorThrown) {
+                console.error('AJAX Error:', jqXHR.responseText);
+                msgErro('Erro de comunicação com o servidor. Verifique sua conexão.');
+            });
 
-        });
     });
 
     // =================================================================
@@ -287,6 +335,7 @@ $(document).ready(function () {
             if (response.success) {
                 const d = response.data;
 
+
                 // Preenche o formulário da aba 2
                 $('#end_adic_id').val(d.id); // ID do endereço
                 $('#end_adic_tipo').val(d.tipo_endereco).trigger('change');
@@ -339,7 +388,11 @@ $(document).ready(function () {
                 if (response.success && response.data) {
                     const d = response.data;
 
+                    // Formata o código para 4 dígitos antes de jogar no input
+                    let codFormatado = d.codigo_interno ? d.codigo_interno.toString().padStart(4, '0') : '';
+
                     // === PREENCHE TODOS OS CAMPOS CORRETAMENTE ===
+                    $('#codigo_interno').val(codFormatado);
                     $('#entidade-id').val(d.id || '');
                     $('#tipo_pessoa').val(d.tipo_pessoa).trigger('change');
                     $('#situacao').val(d.situacao);
@@ -347,7 +400,10 @@ $(document).ready(function () {
                     $('#inscricao_estadual_rg').val(d.inscricao_estadual_rg || '');
                     $('#razao_social').val(d.razao_social || '');
                     $('#nome_fantasia').val(d.nome_fantasia || '');
-                    $('#codigo_interno').val(d.codigo_interno || '');
+                    //  $('#codigo_interno').val(d.codigo_interno || '');
+
+                    let codigoFormatado = d.codigo_interno ? d.codigo_interno.toString().padStart(4, '0') : '';
+                    $('#codigo_interno').val(codigoFormatado);
 
                     // === ENDEREÇO PRINCIPAL (agora preenche!) ===
                     $('#end_cep').val(d.end_cep || '').trigger('input');
@@ -390,8 +446,11 @@ $(document).ready(function () {
     // BOTÃO ADICIONAR (LIMPAR)
     $modalEntidade.on('show.bs.modal', function (event) {
         const $trigger = $(event.relatedTarget); // Elemento que disparou o modal
+
         // Se foi aberto pelo botão adicionar (não editar)
         if ($trigger.length > 0 && !$trigger.hasClass('btn-editar-entidade')) {
+
+            // 1. Reseta o formulário
             $formEntidade[0].reset();
             $('#entidade-id').val(''); //Limpa o ID
             $('#modal-entidade-label').text('Adicionar Novo');
@@ -402,6 +461,23 @@ $(document).ready(function () {
             $('#situacao').val('Ativo');
 
             updatePessoaFields(); //Reaplica regras visuais
+
+            // 2. BUSCA O PRÓXIMO CÓDIGO AUTOMATICAMENTE
+            const ROUTE_NEXT_CODE = BASE_URL + '/entidades/proximo-codigo';
+
+            // Coloca um feedback visual ("...")
+            $('#codigo_interno').val('...').prop('readonly', true);
+
+            $.getJSON(ROUTE_NEXT_CODE, function (response) {
+                if (response.success) {
+                    // Preenche: "0016"
+                    $('#codigo_interno').val(response.code);
+                } else {
+                    $('#codigo_interno').val('');
+                }
+                // Libera o campo caso o usuário queira mudar manualmente
+                $('#codigo_interno').prop('readonly', false);
+            });
         }
     });
 

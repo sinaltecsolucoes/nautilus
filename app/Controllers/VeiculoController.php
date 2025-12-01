@@ -37,11 +37,10 @@ class VeiculoController
             die("Acesso Negado: Você não tem permissão para visualizar o Cadastro de Veículos.");
         }
 
-        // Futuramente, passaremos opções de proprietários (Entidades) para o formulário.
         $data = [
             'title' => 'Cadastro de Veículos',
             'csrf_token' => $_SESSION['csrf_token'] ?? $this->generateCsrfToken(),
-            // Passaremos opções de proprietários (Entidades) aqui futuramente
+            'pageScript'  => 'veiculos',
         ];
 
         // RENDERIZAÇÃO
@@ -60,14 +59,6 @@ class VeiculoController
             exit;
         }
 
-        // NOVO: Coleta e passa todos os parâmetros DataTables (draw, start, length, search)
-        /*  $params = [
-            'draw' => filter_input(INPUT_POST, 'draw', FILTER_VALIDATE_INT) ?? 1,
-            'start' => filter_input(INPUT_POST, 'start', FILTER_VALIDATE_INT) ?? 0,
-            'length' => filter_input(INPUT_POST, 'length', FILTER_VALIDATE_INT) ?? 10,
-            'search' => filter_input(INPUT_POST, 'search', FILTER_DEFAULT, FILTER_REQUIRE_ARRAY),
-        ]; */
-
         // Parâmetros DataTables
         $params = [
             'draw'   => $_POST['draw'] ?? 1,
@@ -76,16 +67,6 @@ class VeiculoController
             'search' => $_POST['search']['value'] ?? '',
             'order'  => $_POST['order'] ?? []
         ];
-
-        /* try {
-            $output = $this->veiculoModel->findAllForDataTable($params); // Chama o Model corrigido
-            echo json_encode($output);
-        } catch (\Exception $e) {
-            error_log("Erro em listarVeiculos: " . $e->getMessage());
-            // Se houver erro, retorna JSON com a estrutura do DataTables, mas com erro
-            http_response_code(500);
-            echo json_encode(["draw" => $params['draw'], "recordsTotal" => 0, "recordsFiltered" => 0, "data" => [], "error" => "Erro ao processar dados."]);
-        }*/
 
         try {
             $output = $this->veiculoModel->findAllForDataTable($params);
@@ -107,6 +88,10 @@ class VeiculoController
      */
     public function salvarVeiculo()
     {
+
+        // 1. HIGIENIZAÇÃO GERAL (Aplica str_upper em tudo que é texto)
+        $POST = sanitize_input_array($_POST);
+
         $id = filter_input(INPUT_POST, 'veiculo_id', FILTER_VALIDATE_INT);
         $acao = $id ? 'Alterar' : 'Criar';
         $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
@@ -121,9 +106,10 @@ class VeiculoController
 
         // 2. Coleta e Sanitiza TODOS os dados do formulário
         $data = [
-            'veiculo_placa'             => filter_input(INPUT_POST, 'veiculo_placa', FILTER_SANITIZE_SPECIAL_CHARS),
-            'veiculo_marca'             => filter_input(INPUT_POST, 'veiculo_marca', FILTER_SANITIZE_SPECIAL_CHARS),
-            'veiculo_modelo'            => filter_input(INPUT_POST, 'veiculo_modelo', FILTER_SANITIZE_SPECIAL_CHARS),
+            'veiculo_codigo'            => filter_input(INPUT_POST, 'veiculo_codigo', FILTER_SANITIZE_SPECIAL_CHARS),
+            'veiculo_placa'             => $POST['veiculo_placa'],
+            'veiculo_marca'             => $POST['veiculo_marca'],
+            'veiculo_modelo'            => $POST['veiculo_modelo'],
             'veiculo_tipo_frota'        => filter_input(INPUT_POST, 'veiculo_tipo_frota', FILTER_SANITIZE_SPECIAL_CHARS),
             'proprietario_entidade_id'  => filter_input(INPUT_POST, 'proprietario_entidade_id', FILTER_VALIDATE_INT),
             'veiculo_ano'               => filter_input(INPUT_POST, 'veiculo_ano', FILTER_VALIDATE_INT),
@@ -225,8 +211,9 @@ class VeiculoController
     public function getProprietariosOptions()
     {
         $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        
         // A permissão para 'Ler' Entidades deve bastar.
-        if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Ler')) {
+        if (!PermissaoService::checarPermissao($cargo, 'Veiculos', 'Ler')) {
             http_response_code(403);
             echo json_encode(["results" => [], "error" => "Acesso negado."]);
             exit;
@@ -235,13 +222,13 @@ class VeiculoController
         $term = $_GET['term'] ?? '';
 
         try {
-            // Assume que EntidadeModel possui o método auxiliar getEntidadesOptions
-            $options = $this->entidadeModel->getEntidadesOptions($term);
+            // Chama o método específico de Transportadoras
+            $options = $this->entidadeModel->getTransportadorasOptions($term);
 
             echo json_encode(['results' => $options]);
         } catch (\Exception $e) {
             error_log("Erro em getProprietariosOptions: " . $e->getMessage());
-            echo json_encode(['results' => [], 'error' => 'Erro ao buscar proprietários.']);
+            echo json_encode(['results' => [], 'error' => 'Erro ao buscar Proprietários/Transportadoras.']);
         }
     }
 }

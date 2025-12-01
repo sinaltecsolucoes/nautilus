@@ -1,5 +1,5 @@
 $(document).ready(function () {
-    // 1. LER CONFIGURAÇÕES (Corrige o erro 403 de URL quebrada)
+    // 1. LER CONFIGURAÇÕES 
     const $root = $('#veiculo-data');
     if (!$root.length) return;
 
@@ -10,7 +10,7 @@ $(document).ready(function () {
     const ROUTE_SALVAR = BASE_URL + '/veiculos/salvar';
     const ROUTE_GET = BASE_URL + '/veiculos/get';
     const ROUTE_DELETAR = BASE_URL + '/veiculos/deletar';
-    const ROUTE_PROPRIETARIOS = BASE_URL + '/veiculos/getProprietariosOptions'; // Ajustado
+    const ROUTE_PROPRIETARIOS = BASE_URL + '/veiculos/getProprietariosOptions';
 
     const $modal = $('#modal-veiculo');
     const $form = $('#form-veiculo');
@@ -33,12 +33,22 @@ $(document).ready(function () {
         },
         "order": [[0, "asc"]],
         "columns": [
+            {
+                "data": "codigo_veiculo",
+                "className": "text-primary fw-bold",
+                "render": function (data) {
+                    return data ? data.toUpperCase() : '-';
+                }
+            },
             { "data": "placa", "className": "fw-bold" },
             {
-                "data": null,
-                "render": function (data) {
-                    // Agora 'data.marca' existe porque adicionamos no Model
-                    return `${data.marca} / ${data.modelo}`;
+                "data": "modelo", // O dado principal desta coluna é o modelo
+                "render": function (data, type, row) {
+                    // Verifica se a marca existe E não está vazia
+                    if (row.marca && row.marca.trim() !== '') {
+                        return `${row.marca} / ${data}`; // Ex: Ford / Ka
+                    }
+                    return data; // Ex: Ka (se não tiver marca)
                 }
             },
             { "data": "ano" },
@@ -112,8 +122,57 @@ $(document).ready(function () {
     });
 
     // 5. EDITAR
+    /* $('#tabela-veiculos').on('click', '.btn-editar', function () {
+         const id = $(this).data('id');
+ 
+         $.post(ROUTE_GET, { veiculo_id: id, csrf_token: CSRF_TOKEN }, function (res) {
+             let response = typeof res === 'string' ? JSON.parse(res) : res;
+ 
+             if (response.success && response.data) {
+                 const d = response.data;
+ 
+                 $('#veiculo-id').val(d.id);
+                 $('#veiculo-codigo').val(d.codigo_veiculo);
+                 $('#veiculo-placa').val(d.placa);
+                 $('#veiculo-marca').val(d.marca);
+                 $('#veiculo-modelo').val(d.modelo);
+                 $('#veiculo-tipo-frota').val(d.tipo_frota);
+                 $('#veiculo-ano').val(d.ano);
+                 $('#veiculo-combustivel').val(d.tipo_combustivel);
+                 $('#veiculo-autonomia').val(d.autonomia);
+                 $('#veiculo-renavam').val(d.renavam);
+                 $('#veiculo-crv').val(d.crv);
+                 $('#veiculo-chassi').val(d.chassi);
+                 $('#veiculo-situacao').val(d.situacao);
+ 
+                 // Valores monetários
+                 if (d.valor_licenciamento) $('#veiculo-licenciamento').val(parseFloat(d.valor_licenciamento).toLocaleString('pt-BR', { minimumFractionDigits: 2 }));
+                 if (d.valor_ipva) $('#veiculo-ipva').val(parseFloat(d.valor_ipva).toLocaleString('pt-BR', { minimumFractionDigits: 2 }));
+ 
+                 // Select2
+                 if (d.proprietario_entidade_id) {
+                     const newOption = new Option(d.proprietario_nome, d.proprietario_entidade_id, true, true);
+                     $proprietarioSelect.append(newOption).trigger('change');
+                 } else {
+                     $proprietarioSelect.val(null).trigger('change');
+                 }
+ 
+                 $('#modal-veiculo-label').text(`Editar: ${d.placa}`);
+                 $modal.modal('show');
+             } else {
+                 msgErro(response.message);
+             }
+         });
+     }); */
+
+    // 5. EDITAR
     $('#tabela-veiculos').on('click', '.btn-editar', function () {
         const id = $(this).data('id');
+
+        // Feedback visual no botão enquanto carrega
+        const $btn = $(this);
+        const originalContent = $btn.html();
+        $btn.html('<i class="fas fa-spinner fa-spin"></i>').prop('disabled', true);
 
         $.post(ROUTE_GET, { veiculo_id: id, csrf_token: CSRF_TOKEN }, function (res) {
             let response = typeof res === 'string' ? JSON.parse(res) : res;
@@ -121,7 +180,9 @@ $(document).ready(function () {
             if (response.success && response.data) {
                 const d = response.data;
 
+                // === CAMPOS DE TEXTO E SELECTS ===
                 $('#veiculo-id').val(d.id);
+                $('#veiculo-codigo').val(d.codigo_veiculo); // Código (Apelido)
                 $('#veiculo-placa').val(d.placa);
                 $('#veiculo-marca').val(d.marca);
                 $('#veiculo-modelo').val(d.modelo);
@@ -129,17 +190,30 @@ $(document).ready(function () {
                 $('#veiculo-ano').val(d.ano);
                 $('#veiculo-combustivel').val(d.tipo_combustivel);
                 $('#veiculo-autonomia').val(d.autonomia);
+
+                // Documentação
                 $('#veiculo-renavam').val(d.renavam);
                 $('#veiculo-crv').val(d.crv);
                 $('#veiculo-chassi').val(d.chassi);
                 $('#veiculo-situacao').val(d.situacao);
 
-                // Valores monetários
-                if (d.valor_licenciamento) $('#veiculo-licenciamento').val(parseFloat(d.valor_licenciamento).toLocaleString('pt-BR', { minimumFractionDigits: 2 }));
-                if (d.valor_ipva) $('#veiculo-ipva').val(parseFloat(d.valor_ipva).toLocaleString('pt-BR', { minimumFractionDigits: 2 }));
+                // === VALORES MONETÁRIOS ===
+                // Formata para o padrão brasileiro (1.200,50) antes de jogar no input
+                if (d.valor_licenciamento) {
+                    $('#veiculo-licenciamento').val(parseFloat(d.valor_licenciamento).toLocaleString('pt-BR', { minimumFractionDigits: 2 }));
+                } else {
+                    $('#veiculo-licenciamento').val('');
+                }
 
-                // Select2
+                if (d.valor_ipva) {
+                    $('#veiculo-ipva').val(parseFloat(d.valor_ipva).toLocaleString('pt-BR', { minimumFractionDigits: 2 }));
+                } else {
+                    $('#veiculo-ipva').val('');
+                }
+
+                // === SELECT2 (Proprietário) ===
                 if (d.proprietario_entidade_id) {
+                    // Cria a opção visualmente para o Select2 saber que existe
                     const newOption = new Option(d.proprietario_nome, d.proprietario_entidade_id, true, true);
                     $proprietarioSelect.append(newOption).trigger('change');
                 } else {
@@ -151,7 +225,14 @@ $(document).ready(function () {
             } else {
                 msgErro(response.message);
             }
-        });
+        })
+            .fail(function () {
+                msgErro('Erro de comunicação ao buscar dados.');
+            })
+            .always(function () {
+                // Restaura o botão
+                $btn.html(originalContent).prop('disabled', false);
+            });
     });
 
     // 6. DELETAR

@@ -7,18 +7,19 @@
 $csrf_token = $data['csrf_token'] ?? '';
 ?>
 
-<h1 class="h3 mb-4 text-gray-800"><?php echo htmlspecialchars($data['title']); ?></h1>
+<h1 class="h3 mb-2 text-gray-800">Cadastro de Veículos</h1>
 
 <div id="veiculo-data"
     data-base-url="<?php echo BASE_URL; ?>"
-    data-csrf-token="<?php echo htmlspecialchars($csrf_token); ?>">
+    data-csrf-token="<?php echo htmlspecialchars($csrf_token); ?>"
+    style="display: none;">
 </div>
 
 <div class="card shadow mb-4">
     <div class="card-header py-3 d-flex justify-content-between align-items-center">
         <h6 class="m-0 font-weight-bold text-primary">Gerenciar Frota</h6>
-        <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#modal-veiculo" id="btn-add-veiculo">
-            <i class="fas fa-plus me-1"></i> Adicionar Veículo
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modal-veiculo" id="btn-add-veiculo">
+            <i class="fas fa-plus"></i> Adicionar Veículo
         </button>
     </div>
     <div class="card-body">
@@ -26,6 +27,7 @@ $csrf_token = $data['csrf_token'] ?? '';
             <table class="table table-bordered table-hover" id="tabela-veiculos" width="100%" cellspacing="0">
                 <thead>
                     <tr>
+                        <th>Cód. Frota</th>
                         <th>Placa</th>
                         <th>Marca / Modelo</th>
                         <th>Ano</th>
@@ -51,6 +53,11 @@ $csrf_token = $data['csrf_token'] ?? '';
             <div class="modal-body">
                 <form id="form-veiculo" class="row g-3">
                     <input type="hidden" id="veiculo-id" name="veiculo_id">
+
+                    <div class="col-md-3">
+                        <label class="form-label">Cód. Frota (Apelido)</label>
+                        <input type="text" class="form-control fw-bold text-primary" id="veiculo-codigo" name="veiculo_codigo" placeholder="Ex: V-01" maxlength="20">
+                    </div>
 
                     <div class="col-md-4">
                         <label class="form-label">Placa (*)</label>
@@ -94,6 +101,7 @@ $csrf_token = $data['csrf_token'] ?? '';
                             <option value="Etanol">Etanol</option>
                             <option value="Flex">Flex</option>
                             <option value="Eletrico">Elétrico</option>
+                            <option value="Hibrido">Híbrido</option>
                         </select>
                     </div>
                     <div class="col-md-4">
