@@ -468,12 +468,9 @@ class EntidadeModel
      */
     public function getClienteOptions(string $term = ''): array
     {
-        // Query base: Filtra Ativos E (Tipo Fornecedor OU Cliente e Fornecedor)
+        // Query base: Filtra Ativos E (Tipo Cliente)
         $sql = "SELECT 
-                    id, 
-                    razao_social, 
-                    nome_fantasia,
-                    cnpj_cpf
+                    id, razao_social, nome_fantasia, cnpj_cpf
                 FROM {$this->table} 
                 WHERE situacao = 'Ativo'
                 AND (tipo = 'Cliente' OR tipo = 'Cliente e Fornecedor')";
@@ -482,44 +479,52 @@ class EntidadeModel
 
         if (!empty($term)) {
             // Remove caracteres não numéricos caso o usuário cole um CNPJ formatado
-            $termClean = preg_replace('/\D/', '', $term);
+            $termLike = '%' . $term . '%';
 
-            $sql .= " AND (razao_social LIKE :term OR nome_fantasia LIKE :term OR cnpj_cpf LIKE :term OR cnpj_cpf LIKE :termClean)";
-            $params[':term'] = '%' . $term . '%';
-            $params[':termClean'] = '%' . $termClean . '%';
+            // Início do grupo OR
+            $whereClause = "(razao_social LIKE :p1 OR nome_fantasia LIKE :p2";
+            $params[':p1'] = $termLike;
+            $params[':p2'] = $termLike;
+
+            // Só adiciona busca por CNPJ se tiver números na pesquisa
+            $termClean = preg_replace('/\D/', '', $term);
+            if (!empty($termClean)) {
+                $whereClause .= " OR cnpj_cpf LIKE :p3";
+                $params[':p3'] = '%' . $termClean . '%';
+            }
+
+            $whereClause .= ")"; // Fecha o grupo OR
+            $sql .= " AND " . $whereClause;
         }
 
         // Ordena por Nome Fantasia (geralmente como chamamos os postos)
         $sql .= " ORDER BY nome_fantasia ASC LIMIT 30";
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
 
-        $results = [];
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $name = $row['nome_fantasia'] ?: $row['razao_social'];
+            $results = [];
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $name = $row['nome_fantasia'] ?: $row['razao_social'];
+                $doc = $row['cnpj_cpf'];
 
-            // Formatação do CNPJ para exibição visual (opcional, mas ajuda)
-            $doc = $row['cnpj_cpf'];
-
-            // Monta o texto: "Posto Ipiranga (12.345.678/0001-90)"
-            $displayText = $name;
-            if ($doc) {
-                // Aplica máscara visual rápida se for CNPJ (14 dígitos)
-                if (strlen($doc) === 14) {
-                    $docMask = preg_replace("/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/", "\$1.\$2.\$3/\$4-\$5", $doc);
-                    $displayText .= " ({$docMask})";
-                } else {
-                    $displayText .= " ({$doc})";
+                // Formatação visual do CNPJ
+                $displayText = $name;
+                if ($doc) {
+                    if (strlen($doc) === 14) {
+                        $docMask = preg_replace("/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/", "\$1.\$2.\$3/\$4-\$5", $doc);
+                        $displayText .= " ({$docMask})";
+                    } else {
+                        $displayText .= " ({$doc})";
+                    }
                 }
+                $results[] = ['id' => $row['id'], 'text' => $displayText];
             }
-
-            $results[] = [
-                'id' => $row['id'],
-                'text' => $displayText
-            ];
+            return $results;
+        } catch (PDOException $e) {
+            return [];
         }
-        return $results;
     }
 
     /**
@@ -536,6 +541,7 @@ class EntidadeModel
         $params = [];
 
         if (!empty($term)) {
+            // Remove caracteres não numéricos caso o usuário cole um CNPJ formatado
             $termLike = '%' . $term . '%';
 
             // Início do grupo OR

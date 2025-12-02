@@ -215,3 +215,8 @@ input:checked+.slider:before {
 .slider.round:before {
     border-radius: 50%;
 }
+
+/* Força larguras fixas para evitar "esticamento" */
+.col-logo { width: 80px; }
+.lbl { width: 90px; }
+.val { width: 180px; } /* Ajuste conforme necessário */

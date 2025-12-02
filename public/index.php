@@ -114,14 +114,17 @@ $routes = [
     'pedidos/next-os'          => ['PedidoController', 'getNextOSNumber'],
 
     // Rotas de Logística/Expedição
-    'logistica'                 => ['ExpedicaoController', 'index'],
-    'expedicao/listar'          => ['ExpedicaoController', 'listarExpedicoes'],
-    'expedicao/salvar'          => ['ExpedicaoController', 'salvarExpedicao'],
-    'expedicao/pessoal-options' => ['ExpedicaoController', 'getPessoalOptions'],
-    'expedicao/next-carga-number' => ['ExpedicaoController', 'getNextCargaNumber'],
-    'expedicao/get'         => ['ExpedicaoController', 'getExpedicao'],
-    'expedicao/deletar'     => ['ExpedicaoController', 'deleteExpedicao'],
-    'expedicao/pedidos-pendentes' => ['ExpedicaoController', 'getPedidosPendentesOptions'],
+    'expedicao'                        => ['ExpedicaoController', 'index'],
+    'expedicao/listar'                 => ['ExpedicaoController', 'listar'],
+    'expedicao/salvar'                 => ['ExpedicaoController', 'salvar'],
+    'expedicao/get'                    => ['ExpedicaoController', 'get'],
+    'expedicao/deletar'                => ['ExpedicaoController', 'deletar'],
+    'expedicao/getVeiculosOptions'     => ['ExpedicaoController', 'getVeiculosOptions'],
+    'expedicao/getPessoalOptions'      => ['ExpedicaoController', 'getPessoalOptions'],
+    'expedicao/getMotoristasOptions'   => ['ExpedicaoController', 'getMotoristasOptions'],
+    'expedicao/getClientesOptions'     => ['ExpedicaoController', 'getClientesOptions'],
+    'expedicao/reordenar'              => ['ExpedicaoController', 'reordenar'],
+    'expedicao/romaneio'               => ['ExpedicaoController', 'gerarRomaneio'],
 
     // Rotas de Abastecimento (Frota)
     'abastecimentos'                    => ['AbastecimentoController', 'index'],

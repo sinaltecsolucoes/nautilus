@@ -86,7 +86,7 @@ $THEME_JS  = $TEMA_BASE_URL . '/js';
 
                         <div class="collapse" id="collapseLogistica">
                             <nav class="sb-sidenav-menu-nested nav">
-                                <a class="nav-link" href="<?php echo BASE_URL; ?>/logistica">Expedição</a>
+                                <a class="nav-link" href="<?php echo BASE_URL; ?>/expedicao">Expedição</a>
                                 <a class="nav-link" href="<?php echo BASE_URL; ?>/abastecimentos">Abastecimentos</a>
                                 <a class="nav-link" href="<?php echo BASE_URL; ?>/manutencao">Manutenção</a>
                             </nav>
@@ -152,6 +152,7 @@ $THEME_JS  = $TEMA_BASE_URL . '/js';
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.mask/1.14.16/jquery.mask.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
     <script src="<?php echo BASE_URL; ?>/assets/js/app.js"></script>
     <script src="<?php echo $THEME_JS; ?>/scripts.js"></script>
 

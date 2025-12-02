@@ -66,31 +66,6 @@ class ManutencaoController
     /**
      * Salva cabeçalho e itens (recebe JSON).
      */
-    /*public function salvar()
-    {
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') exit;
-
-        // Pega o JSON Raw do corpo da requisição
-        $json = file_get_contents('php://input');
-        $data = json_decode($json, true);
-
-        if (!$data || !isset($data['header']) || !isset($data['itens'])) {
-            echo json_encode(['success' => false, 'message' => 'Dados inválidos ou incompletos.']);
-            exit;
-        }
-
-        $userId = $_SESSION['user_id'] ?? 0;
-
-        try {
-            // Chama o model para salvar a transação completa
-            $this->model->createFull($data['header'], $data['itens'], $userId);
-
-            echo json_encode(['success' => true, 'message' => 'Manutenção registrada com sucesso!']);
-        } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => "Erro no servidor: " . $e->getMessage()]);
-        }
-    } */
-
     public function salvar()
     {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') exit;

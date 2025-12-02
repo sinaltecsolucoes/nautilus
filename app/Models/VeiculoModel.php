@@ -80,7 +80,6 @@ class VeiculoModel
         if (!empty($term)) {
             $termLike = '%' . $term . '%';
             
-            // CORREÇÃO MANTIDA: Parâmetros únicos para evitar conflito no PDO
             $sql .= " AND (placa LIKE :term1 OR modelo LIKE :term2 OR codigo_veiculo LIKE :term3)";
             
             $params[':term1'] = $termLike;
@@ -265,7 +264,7 @@ class VeiculoModel
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([':id' => $id]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
-    }
+    } 
 
     /**
      * Atualiza um veículo existente.

@@ -115,7 +115,7 @@ $(document).ready(function () {
         if (!val) return 0;
         if (typeof val === 'number') return val;
         return parseFloat(val.replace(/\./g, '').replace(',', '.')) || 0;
-    }
+    } 
 
     function formatMoney(val) {
         return parseFloat(val).toLocaleString('pt-BR', { minimumFractionDigits: 2 });

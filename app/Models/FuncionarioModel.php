@@ -328,12 +328,71 @@ class FuncionarioModel
     /**
      * Busca motoristas ativos para o select de abastecimento.
      */
-    public function getMotoristasOptions()
+    public function getMotoristasOptions(string $term = '')
     {
         // Busca apenas quem tem cargo de Motorista e está Ativo
-        $sql = "SELECT id, nome_completo FROM funcionarios 
-                WHERE tipo_cargo = 'Motorista' AND situacao = 'Ativo' 
-                ORDER BY nome_completo ASC";
-        return $this->pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+        $sql = "SELECT id, nome_completo, nome_comum AS text
+                FROM {$this->table} 
+                WHERE tipo_cargo = 'Motorista' 
+                AND situacao = 'Ativo'";
+
+        $params = [];
+
+        if (!empty($term)) {
+            $sql .= " AND (nome_comum LIKE :t1 OR nome_completo LIKE :t2)";
+            $params[':t1'] = "%$term%";
+            $params[':t2'] = "%$term%";
+        }
+
+        $sql .= " ORDER BY nome_comum ASC LIMIT 30";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Busca funcionários operacionais (Técnico, Encarregado) ativos para Select2.
+     * @param string $term Termo de busca (Nome ou Apelido).
+     * @return array Lista formatada para Select2.
+     */
+    public function getFuncionariosOperacionais(string $term = ''): array
+    {
+        // Define quais cargos devem aparecer na lista de expedição
+        // Baseado no seu SQL, os cargos relevantes são:
+        $cargosPermitidos = "'Tecnico', 'Auxiliar de Expedicao'";
+
+        $sql = "SELECT id, nome_completo, nome_comum, tipo_cargo 
+                FROM {$this->table} 
+                WHERE situacao = 'Ativo' 
+                AND tipo_cargo IN ($cargosPermitidos)";
+
+        $params = [];
+
+        if (!empty($term)) {
+            $sql .= " AND (nome_completo LIKE :t1 OR nome_comum LIKE :t2)";
+            $params[':t1'] = "%$term%";
+            $params[':t2'] = "%$term%";
+        }
+
+        $sql .= " ORDER BY nome_comum ASC LIMIT 30";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+
+        $results = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            // Usa o Nome Comum (Apelido) se tiver, senão usa o Completo
+            $nomeExibicao = $row['nome_comum'] ?: $row['nome_completo'];
+
+            // Retorna no formato: "João (Motorista)"
+            $results[] = [
+                'id' => $row['id'],
+                'text' => $nomeExibicao . ' (' . $row['tipo_cargo'] . ')'
+            ];
+        }
+
+        return $results;
     }
 }
