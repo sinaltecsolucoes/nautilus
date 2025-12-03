@@ -105,13 +105,13 @@ $routes = [
     'usuarios/deletar'  => ['FuncionarioController', 'deleteFuncionario'],
 
     // Rotas de Vendas/Pedidos
-    'pedidos'                  => ['PedidoController', 'index'],
-    'pedidos/listar'           => ['PedidoController', 'listarPedidos'],
-    'pedidos/salvar'           => ['PedidoController', 'salvarPedido'],
-    'pedidos/clientes-options' => ['PedidoController', 'getClientesOptions'],
-    'pedidos/get'              => ['PedidoController', 'getPedido'],
-    'pedidos/deletar'          => ['PedidoController', 'deletePedido'],
-    'pedidos/next-os'          => ['PedidoController', 'getNextOSNumber'],
+    'pedidos'                    => ['PedidoController', 'index'],
+    'pedidos/listar'             => ['PedidoController', 'listarPedidos'],
+    'pedidos/salvar'             => ['PedidoController', 'salvarPedido'],
+    'pedidos/getClientesOptions' => ['PedidoController', 'getClientesOptions'],
+    'pedidos/get'                => ['PedidoController', 'getPedido'],
+    'pedidos/deletar'            => ['PedidoController', 'deletePedido'],
+    'pedidos/next-os'            => ['PedidoController', 'getNextOSNumber'],
 
     // Rotas de Logística/Expedição
     'expedicao'                        => ['ExpedicaoController', 'index'],

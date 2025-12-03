@@ -141,7 +141,7 @@ class ExpedicaoController
         }
 
         exit;
-    }
+    } 
 
     // --- ROTAS AUXILIARES SELECT2 ---
     public function getVeiculosOptions()
@@ -211,109 +211,17 @@ class ExpedicaoController
             echo json_encode(['success' => false, 'message' => 'Erro interno']);
         }
         exit;
-    }
+    } 
 
-    /* public function gerarRomaneio()
-    {
-        $dompdfPath = ROOT_PATH . '/assets/libs/dompdf/autoload.inc.php';
-
-        if (file_exists($dompdfPath)) {
-            require_once $dompdfPath;
-        } else {
-            die("Erro: Biblioteca DomPDF não encontrada.");
-        }
-
-        $dataFiltro = $_GET['data'] ?? date('Y-m-d');
-        $itens = $this->model->getDadosRelatorio($dataFiltro);
-
-        $totalPL = 0;
-        foreach ($itens as $i) {
-            $totalPL += (float)$i['qtd_pl'];
-        }
-
-        $html = '
-        <html>
-        <head>
-            <style>
-                body { font-family: Helvetica, sans-serif; font-size: 11px; }
-                h1 { text-align: center; margin-bottom: 5px; font-size: 16px; text-transform: uppercase; }
-                .sub-header { text-align: center; margin-bottom: 20px; font-size: 12px; color: #555; }
-                table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-                th { background-color: #e9ecef; font-weight: bold; border: 1px solid #999; padding: 6px; text-align: left; }
-                td { border: 1px solid #999; padding: 6px; vertical-align: top; }
-                .text-center { text-align: center; }
-                .text-right { text-align: right; }
-                .fw-bold { font-weight: bold; }
-            </style>
-        </head>
-        <body>
-            <h1>Romaneio de Expedição Diária</h1>
-            <div class="sub-header">Data: ' . date('d/m/Y', strtotime($dataFiltro)) . '</div>
-
-            <table>
-                <thead>
-                    <tr>
-                        <th width="50" class="text-center">Hora</th>
-                        <th width="60">OS</th>
-                        <th>Cliente / Destino</th>
-                        <th>Volumes / Caixas</th>
-                        <th width="80" class="text-right">Qtd PL</th>
-                        <th>Veículo</th>
-                        <th>Equipe (Mot/Téc)</th>
-                        <th>Obs</th>
-                    </tr>
-                </thead>
-                <tbody>';
-
-        if (empty($itens)) {
-            $html .= '<tr><td colspan="8" class="text-center" style="padding: 20px;">Nenhuma entrega programada.</td></tr>';
-        } else {
-            foreach ($itens as $row) {
-                // Formatação PL
-                $v = (float)$row['qtd_pl'];
-                $plFormatado = ($v < 1)
-                    ? number_format($v * 1000, 0, '', '.') . ' mil'
-                    : number_format($v, 3, ',', '.') . ' M';
-
-                // Formatação Equipe (Agora usando os campos da tabela única)
-                $equipe = $row['motorista_nome'] . '<br><small>' . $row['tecnico_nome'] . '</small>';
-
-                $html .= '
-                    <tr>
-                        <td class="text-center">' . ($row['hora_formatada'] ?: '-') . '</td>
-                        <td>' . $row['os'] . '</td>
-                        <td><strong>' . $row['cliente_nome'] . '</strong></td>
-                        <td>' . $row['caixas_usadas'] . '</td>
-                        <td class="text-right fw-bold">' . $plFormatado . '</td>
-                        <td>' . $row['veiculo_nome'] . '</td>
-                        <td>' . $equipe . '</td>
-                        <td>' . ($row['observacao'] ?: '-') . '</td>
-                    </tr>';
-            }
-
-            // Totais
-            $html .= '
-                <tr style="background-color: #d1ecf1;">
-                    <td colspan="4" class="text-right fw-bold">TOTAL GERAL:</td>
-                    <td class="text-right fw-bold">' . number_format($totalPL, 3, ',', '.') . ' M</td>
-                    <td colspan="3"></td>
-                </tr>';
-        }
-
-        $html .= '</tbody></table></body></html>';
-
-        $dompdf = new \Dompdf\Dompdf();
-        $dompdf->loadHtml($html);
-        $dompdf->setPaper('A4', 'landscape');
-        $dompdf->render();
-        $dompdf->stream("Romaneio_$dataFiltro.pdf", ["Attachment" => false]);
-        exit;
-    } */
     public function gerarRomaneio()
     {
         // 1. Carrega DomPDF
         $dompdfPath = ROOT_PATH . '/assets/libs/dompdf/autoload.inc.php';
-        if (!file_exists($dompdfPath)) die("Erro: DomPDF não encontrado.");
+        if (!file_exists($dompdfPath)) {
+            // Tenta caminho alternativo comum
+            $dompdfPath = ROOT_PATH . '/assets/libs/dompdf/vendor/autoload.php';
+            if (!file_exists($dompdfPath)) die("Erro: DomPDF não encontrado.");
+        }
         require_once $dompdfPath;
 
         // 2. Busca Dados
@@ -321,150 +229,227 @@ class ExpedicaoController
         $itens = $this->model->getDadosRelatorio($dataFiltro);
         $dataFormatada = date('d/m/Y', strtotime($dataFiltro));
 
-        // 3. Monta o HTML
-        // CSS focado em replicar o layout da imagem (Bordas pretas, fontes compactas)
+        // Configuração de Logo
+        // 1. Aponta para o caminho físico no servidor (C:\xampp\htdocs\nautilus\assets\img\logo.png)
+        $logoPath = ROOT_PATH . '/assets/img/logo.png';
+        $imgTag = '<b>LOGO</b>'; // Fallback padrão
+
+        if (file_exists($logoPath)) {
+            // 2. Converte a imagem para dados brutos (Base64)
+            $type = pathinfo($logoPath, PATHINFO_EXTENSION);
+            $data = file_get_contents($logoPath);
+            $base64 = 'data:image/' . $type . ';base64,' . base64_encode($data);
+
+            // 3. Cria a tag IMG com o código embutido
+            $imgTag = '<img src="' . $base64 . '" style="max-width:90%; max-height:60px;">';
+        } else {
+            // Debug: se não achar, avisa onde tentou procurar (útil para você ver o erro)
+            // $imgTag = 'Img não encontrada em: ' . $logoPath; 
+        }
+
+        // 3. Monta HTML
         $html = '
         <html>
         <head>
             <style>
                 @page { margin: 20px; }
-                body { font-family: Helvetica, Arial, sans-serif; font-size: 10px; color: #000; }
+                body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #000; }
                 
-                .header-geral { 
+                /* Título Principal */
+                .main-title { 
                     text-align: center; font-weight: bold; font-size: 14px; 
-                    background-color: #ddd; border: 2px solid #000; padding: 5px; margin-bottom: 2px;
-                }
-                .header-data {
-                    text-align: center; font-weight: bold; font-size: 12px;
-                    border: 2px solid #000; border-top: none; padding: 3px; margin-bottom: 10px;
-                    background-color: #f9f9f9;
+                    background-color: #ddd; border: 2px solid #000; padding: 5px; margin-bottom: 5px;
                 }
 
-                /* Estilo do Card (Cada Entrega) */
-                .card-entrega {
-                    width: 100%; border: 2px solid #000; margin-bottom: 10px; page-break-inside: avoid;
+                /* Estrutura do Card (Tabela) */
+                .card-table {
+                    width: 100%; 
+                    border-collapse: collapse; 
+                    border: 2px solid #000; 
+                    margin-bottom: 5px;
+                    page-break-inside: avoid; /* Evita quebrar o card no meio da página */
+                    table-layout: fixed;
                 }
                 
-                .tbl-layout { width: 100%; border-collapse: collapse; }
-                .tbl-layout td { vertical-align: middle; border: 1px solid #000; padding: 2px 4px; }
+                .card-table td {
+                    border: 1px solid #000;
+                    padding: 3px 5px;
+                    vertical-align: middle;
+                    overflow: hidden; /* Previne que texto grande estoure o layout fixo */
+                }
+
+                /* Estilo do Label dentro da célula */
+                .lbl { font-weight: 900; color: #000; margin-right: 5px; }
+
+                /* Estilos Específicos das Células */
+                .col-label { background-color: #f2f2f2; font-weight: bold;}
+                .col-value { font-weight: bold; }
+                .text-center { text-align: center; }
+
+                /* ESTILO PARA O ESPAÇO COLORIDO */
+                .separator {
+                    width: 100%;
+                    height: 10px;           /* Altura da faixa colorida */
+                    background-color: #ccc; /* Cor da faixa (Preto, Cinza #ccc, etc) */
+                    margin-bottom: 5px;    /* Espaço em branco depois da faixa antes da próxima tabela */
+                }
                 
-                /* Coluna da Logo */
-                .col-logo { width: 80px; text-align: center; vertical-align: middle; background-color: #fff; }
-                .img-logo { max-width: 70px; max-height: 60px; }
-                
-                /* Labels e Valores */
-                .lbl { font-weight: bold; width: 85px; background-color: #f0f0f0; }
-                .val { font-weight: bold; }
-                
-                /* Texto Grande (OS, Cliente) */
+                /* Logo */
+                .cell-logo { text-align: center; background-color: #fff; }
+
+                /* Texto Grande para Destaques */
                 .txt-lg { font-size: 11px; }
                 .txt-xl { font-size: 12px; font-weight: 900; }
-                
-                /* Caixa de Divisões */
-                .box-divisoes { height: 100%; vertical-align: top; }
+
             </style>
         </head>
         <body>
-            <div class="header-geral">EXPEDIÇÃO DE VENDAS</div>
-            <div class="header-data">DATA: ' . $dataFormatada . '</div>';
+            <div class="main-title">EXPEDIÇÃO DE VENDAS - ' . $dataFormatada . '</div>
+            <div class="separator"></div>';
 
         if (empty($itens)) {
-            $html .= '<div style="text-align:center; padding:20px; border:1px solid #000;">Nenhuma expedição programada para esta data.</div>';
+            $html .= '<div style="text-align:center; padding:30px; border:1px solid #000;">Nenhuma programação encontrada para esta data.</div>';
         } else {
             foreach ($itens as $row) {
-                // Formatações
-                $plFormatado = ((float)$row['qtd_pl'] < 1)
-                    ? number_format((float)$row['qtd_pl'] * 1000, 0, '', '.') . ' mil'
-                    : number_format((float)$row['qtd_pl'], 3, ',', '.') . ' M';
-
-                // Caminho da Logo (Ajuste conforme seu projeto)
-                // Se a imagem não aparecer, use base64 ou caminho absoluto do sistema (C:/xampp...)
-                $veiculoNome = strtoupper($row['veiculo_nome'] ?? 'N/D');
-                $motoristaNome = strtoupper($row['motorista_nome'] ?? 'N/D');
-                $tecnicoNome = strtoupper($row['tecnico_nome'] ?? 'N/D');
-                $cidadeUf = strtoupper($row['cidade_uf'] ?? '-');
+                // Tratamento de Dados
+                $veiculo = strtoupper($row['veiculo_nome'] ?? '-');
+                $motorista = strtoupper($row['motorista_nome'] ?? '-');
+                $tecnico = strtoupper($row['tecnico_nome'] ?? '-');
+                $cliente = strtoupper($row['cliente_nome'] ?? '-');
+                $endereco = strtoupper($row['cidade_uf'] ?? '-');
                 $os = $row['os'] ?? '-';
+                $horario = $row['hora_formatada'] ?? '-';
 
-                $logoPath = 'assets/img/logo.png'; // Coloque sua logo aqui
-                $imgTag = file_exists($logoPath) ? '<img src="' . $logoPath . '" class="img-logo">' : 'LOGO';
+                // Formatação Qtd PL
+                $qtdPl = (float)$row['qtd_pl'];
+                $plFormatado = ($qtdPl < 1000)
+                    ? number_format($qtdPl * 1000, 0, '', '.') . ' mil'
+                    : number_format($qtdPl * 1000, 0, ',', '.') . ' milhões';
 
-                // HTML DO CARD (Replica exata da estrutura da imagem)
+                // Caixas / Divisões
+                $caixas = $row['caixas_usadas'] ?? '-';
+
+                // --- CONSTRUÇÃO DA TABELA 5 COLUNAS x 10 LINHAS ---
                 $html .= '
-                <div class="card-entrega">
-                    <table class="tbl-layout">
-                        <tr>
-                            <td class="col-logo" rowspan="6">' . $imgTag . '</td>
-                            
-                            <td class="lbl">EXP.:</td>
-                            <td class="val">' . $dataFormatada . '</td>
-                            
-                            <td class="lbl">O.S.:</td>
-                            <td class="val txt-lg">' . $os . '</td>
-                        </tr>
+                <table class="card-table" style="border-collapse: collapse; width: 100%;">
+
+
+                    <!-- LINHA 1 -->
+                                     
+                    <tr>
+                        <td class="cell-logo" rowspan="2" width="12%">' . $imgTag . '</td>
                         
-                        <tr>
-                            <td class="lbl">EMBARQUE:</td>
-                            <td class="val txt-lg">' . ($row['hora_formatada'] ?: '-') . '</td>
-                            
-                            <td class="lbl">CLIENTE:</td>
-                            <td class="val txt-lg">' . strtoupper($row['cliente_nome']) . '</td>
-                        </tr>
+                        <td  width="20%"><span class="lbl">EXP.:</span> ' . $dataFormatada . '</td>
+                        <td class="col-label" width="15%">O.S.:</td>
+                        <td class="col-value txt-lg" width="53%">' . $os . '</td>
+                    </tr>
+                
+                    <!-- LINHA 2 -->
+                    <tr>
+                        <td><span class="lbl">EMBARQUE:</span> ' . $horario . '</td>
+                        
+                        <td class="col-label">CLIENTE:</td>                        
+                        <td class="col-value txt-lg">' . $cliente . '</td>
+                    </tr>
 
-                        <tr>
-                            <td class="lbl">LAB / CICLO:</td>
-                            <td class="val">-</td> <td class="lbl">ENDEREÇO:</td>
-                            <td class="val">' . $cidadeUf . '</td>
-                        </tr>
+                    <!-- LINHA 3 -->
+                    <tr>
+                        <td class="col-label">LAB.:</td>                        
+                        <td class="col-value text-center">-</td>
+                        
+                        <td class="col-label">ENDEREÇO:</td>                        
+                        <td class="col-value">' . $endereco . '</td>
+                    </tr>
 
-                        <tr>
-                            <td class="lbl">TANQUE:</td>
-                            <td class="val">-</td>
-                            
-                            <td class="lbl">CONTATO:</td>
-                            <td class="val">-</td>
-                        </tr>
+                    <!-- LINHA 4 -->
+                    <tr>
+                        <td class="col-label">CICLO:</td>                        
+                        <td class="col-value text-center">-</td>
+                        
+                        <td class="col-label">CONTATO:</td>                        
+                        <td class="col-value">-</td>
+                    </tr>
 
-                        <tr>
-                            <td class="lbl">VEÍCULO:</td>
-                            <td class="val" style="font-size:9px;">' . $veiculoNome . '</td>
-                            
-                            <td class="lbl">QTD (PLs):</td>
-                            <td class="val txt-xl">' . $plFormatado . '</td>
-                        </tr>
+                    <!-- LINHA 5 -->
+                    <tr>
+                        <td class="col-label" rowspan="2">TANQUE:</td>                        
+                        <td class="col-value text-center" rowspan="2">-</td>
+                        
+                        <td class="col-label">QUANT. PL:</td>                        
+                        <td class="col-value txt-xl">' . $plFormatado . '</td>
+                    </tr>
 
-                        <tr>
-                            <td class="lbl">MOTORISTA:</td>
-                            <td class="val">' . $motoristaNome . '</td>
-                            
-                            <td class="lbl">SALINIDADE:</td>
-                            <td class="val">-</td>
-                        </tr>
+                    <!-- LINHA 6 -->
+                    <tr>
+                        <td><span class="lbl">SALINIDADE:</span> -</td>
+                          <td rowspan="4"></td>       
+                    </tr>
 
-                        <tr>
-                            <td class="lbl" style="border-top: 2px solid #000;">TÉCNICO:</td>
-                            <td class="val" style="border-top: 2px solid #000;" colspan="2">' . strtoupper($row['tecnico_nome'] ?? '-') . '</td>
-                            
-                            <td class="lbl" style="border-top: 2px solid #000;">VOLUMES:</td>
-                            <td class="val box-divisoes" style="border-top: 2px solid #000;">
-                                <div style="font-size: 11px;">' . nl2br($row['caixas_usadas'] ?? '-') . '</div>
-                                ' . ($row['observacao'] ? '<div style="margin-top:2px; font-size:9px; color:#555; font-style:italic;">Obs: ' . $row['observacao'] . '</div>' : '') . '
-                            </td>
-                        </tr>
-                    </table>
-                </div>';
+                    <!-- LINHA 7 -->
+                    <tr>
+                        <td class="col-label">VEÍCULO:</td>                        
+                        <td class="col-value">' . $veiculo . '</td>
+                        
+                        <td class="col-label text-center align-middle">DIVISÕES:</td>
+                                                                        
+                    </tr>
+
+                    <!-- LINHA 8 -->
+                    <tr>
+                        <td class="col-label">MOTORISTA:</td>                        
+                        <td class="col-value">' . $motorista . '</td>
+                        <td class="val box-divisoes" rowspan="2" style="text-align: center; vertical-align: middle;">
+                             <div style="font-size: 9px; font-weight: bold;">' . nl2br($caixas) . '</div>
+                        </td>
+                    </tr>
+
+                    <!-- LINHA 9 -->
+                    <tr>
+                        <td class="col-label" style="vertical-align: middle;">TÉCNICO:</td>                        
+                        <td class="col-value" style="vertical-align: middle;">' . $tecnico . '</td>                        
+                    </tr>
+                </table>
+                <div class="separator"></div>';
             }
         }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         $html .= '</body></html>';
 
         // 4. Gera PDF
         $dompdf = new \Dompdf\Dompdf();
         $dompdf->loadHtml($html);
-        $dompdf->setPaper('A4', 'portrait'); // Retrato, pois os cards são empilhados
+        $dompdf->setPaper('A4', 'portrait'); // Retrato acomoda melhor esse layout vertical
         $dompdf->render();
-
-        // Nome do arquivo
-        $dompdf->stream("Romaneio_Expedicao_$dataFiltro.pdf", ["Attachment" => false]);
+        $dompdf->stream("Romaneio_$dataFiltro.pdf", ["Attachment" => false]);
         exit;
-    }
+    } 
 }

@@ -64,10 +64,11 @@ class EntidadeModel
         }
 
         if (!empty($searchValue)) {
-            $where .= "AND (razao_social LIKE :s1 OR nome_fantasia LIKE :s1 OR cnpj_cpf LIKE :s2 OR codigo_interno LIKE :s3) ";
+            $where .= "AND (razao_social LIKE :s1 OR nome_fantasia LIKE :s2 OR cnpj_cpf LIKE :s3 OR codigo_interno LIKE :s4) ";
             $bindParams[':s1'] = "%" . $searchValue . "%";
             $bindParams[':s2'] = "%" . $searchValue . "%";
             $bindParams[':s3'] = "%" . $searchValue . "%";
+            $bindParams[':s4'] = "%" . $searchValue . "%";
         }
 
         // 3. Lógica de Ordenação Dinâmica 

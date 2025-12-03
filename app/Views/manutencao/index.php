@@ -81,10 +81,11 @@
                             <div class="col-md-2">
                                 <label class="small fw-bold">Tipo</label>
                                 <select id="item_tipo" class="form-select form-select-sm">
-                                    <option value="Preventiva">Preventiva</option>
+                                    <option value="Desp. Administrativa">Desp. Administrativa</option>
+                                    <option value="Implementacao">Implementação</option>
                                     <option value="Corretiva">Corretiva</option>
                                     <option value="Preditiva">Preditiva</option>
-                                    <option value="Implementacao">Implementação</option>
+                                    <option value="Preventiva">Preventiva</option>
                                 </select>
                             </div>
 

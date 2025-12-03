@@ -60,7 +60,7 @@ class ExpedicaoModel
                     m.nome_comum AS motorista_nome,
                     c.nome_fantasia AS cliente_nome
                 $sqlBase
-                ORDER BY e.horario ASC, e.ordem ASC, e.id ASC 
+                ORDER BY ISNULL(e.ordem), e.ordem ASC, e.horario ASC, e.id ASC
                 LIMIT :start, :length";
 
         $stmt = $this->pdo->prepare($sql);
@@ -133,7 +133,7 @@ class ExpedicaoModel
             $this->pdo->rollBack();
             throw $e;
         }
-    }
+    } 
 
     /**
      * Atualiza uma programação existente.
@@ -247,83 +247,7 @@ class ExpedicaoModel
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
-    /**
-     * Busca todos os dados de uma data específica para o Relatório de Romaneio.
-     * Traz todos os nomes (joins) para não precisar processar no Controller.
-     */
-    /* public function getDadosRelatorio($data)
-    {
-        $sql = "SELECT 
-                    e.*,
-                    -- Formata Horário
-                    DATE_FORMAT(e.horario, '%H:%i') as hora_formatada,
-                    
-                    -- Veículo
-                    CONCAT(IF(v.codigo_veiculo IS NOT NULL, CONCAT(v.codigo_veiculo, ' - '), ''), v.placa) AS veiculo_nome,
-                    
-                    -- Pessoas
-                    m.nome_comum AS motorista_nome,
-                    t.nome_comum AS tecnico_nome,
-                    
-                    -- Cliente
-                    c.nome_fantasia AS cliente_nome
-
-                FROM expedicao_programacao e
-                LEFT JOIN veiculos v ON e.veiculo = v.id
-                LEFT JOIN funcionarios t ON e.tecnico = t.id
-                LEFT JOIN funcionarios m ON e.motorista = m.id
-                LEFT JOIN entidades c ON e.cliente = c.id
-                
-                WHERE e.data_expedicao = :data
-                ORDER BY e.horario ASC, e.ordem ASC, e.id ASC";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':data' => $data]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } */
-
-    /**
-     * Busca dados para o Romaneio (Layout Ficha).
-     */
-    /* public function getDadosRelatorio($data)
-    {
-        $sql = "SELECT 
-                    e.*,
-                    
-                    -- Formata Horário (Ex: 03:00)
-                    DATE_FORMAT(e.horario, '%H:%i') as hora_formatada,
-                    
-                    -- Veículo (Código - Placa - Modelo)
-                    CONCAT(
-                        IF(v.codigo_veiculo IS NOT NULL, CONCAT(v.codigo_veiculo, ' - '), ''), 
-                        v.placa, ' - ', v.modelo
-                    ) AS veiculo_completo,
-                    
-                    -- Pessoas
-                    m.nome_comum AS motorista_nome,
-                    t.nome_comum AS tecnico_nome,
-                    
-                    -- Cliente e Endereço
-                    c.nome_fantasia AS cliente_nome,
-                    CONCAT(end.cidade, '/', end.uf) as cidade_uf
-
-                FROM expedicao_programacao e
-                LEFT JOIN veiculos v ON e.veiculo = v.id
-                LEFT JOIN funcionarios t ON e.tecnico = t.id
-                LEFT JOIN funcionarios m ON e.motorista = m.id
-                LEFT JOIN entidades c ON e.cliente = c.id
-                -- Join para pegar a cidade do endereço principal do cliente
-                LEFT JOIN enderecos end ON (c.id = end.entidade_id AND end.tipo_endereco = 'Principal')
-                
-                WHERE e.data_expedicao = :data
-                ORDER BY e.horario ASC, e.ordem ASC, e.id ASC";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':data' => $data]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } */
-
-    /**
+   /**
      * Busca dados para o Romaneio (Layout Ficha).
      */
     public function getDadosRelatorio($data)

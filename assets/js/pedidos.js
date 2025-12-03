@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const ROUTE_GET = BASE_URL + '/pedidos/get';
     const ROUTE_DELETAR = BASE_URL + '/pedidos/deletar';
     const ROUTE_NEXT_OS = BASE_URL + '/pedidos/next-os';
+    const ROUTE_CLIENTES = BASE_URL + '/pedidos/getClientesOptions';
 
     const $modal = $('#modal-pedido');
     const $form = $('#form-pedido');
@@ -17,15 +18,58 @@ document.addEventListener('DOMContentLoaded', function () {
     const $idInput = $('#pedido-id');
     const $osInput = $('#pedido-os-numero');
 
+    // ===============================================================
+    // 1. MÁSCARAS
+    // ===============================================================
+    if ($.fn.mask) {
+        // Dinheiro: 1.234,56
+        $('.money').mask('#.##0,00', { reverse: true });
 
+        // Números Inteiros: 12345 (Quantidade e OS)
+        $('.mascara-numero').mask('0#');
 
-    // Funções de Cálculo
-    function calcularValorTotal() {
-        const qtd = parseFloat($qtdInput.val()) || 0;
-        const unitario = parseFloat($unitarioInput.val()) || 0;
-        const total = qtd * unitario;
-        $totalInput.val(total.toFixed(2));
+        // Percentual / Decimal simples: 10.5
+        $('.mascara-float').mask('#0.0', { reverse: true });
     }
+
+    // ===============================================================
+    // 2. FUNÇÕES AUXILIARES DE CONVERSÃO
+    // ===============================================================
+
+    // Converte "1.200,50" (BR) para 1200.50 (JS)
+    function parseMoney(val) {
+        if (!val) return 0;
+        // Remove pontos de milhar e troca vírgula por ponto
+        return parseFloat(val.replace(/\./g, '').replace(',', '.')) || 0;
+    }
+
+    // Converte 1200.50 (JS) para "1.200,50" (BR)
+    function formatMoney(val) {
+        return parseFloat(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // ===============================================================
+    // 3. CÁLCULO AUTOMÁTICO
+    // ===============================================================
+    function calcularValorTotal() {
+        // Pega os valores convertidos corretamente
+        const qtd = parseMoney($qtdInput.val());
+        const unitario = parseMoney($unitarioInput.val());
+
+        // Calcula
+        const total = qtd * unitario;
+
+        // Devolve para o input formatado em Reais, mas o .val() aciona a máscara
+        // Para inputs com máscara 'money', usamos o formato brasileiro direto
+        $totalInput.val(formatMoney(total));
+
+        // Força atualização visual da máscara no total (bugfix para alguns browsers)
+        $totalInput.trigger('input');
+    }
+
+    // Eventos de Cálculo
+    $qtdInput.on('input keyup', calcularValorTotal);
+    $unitarioInput.on('input keyup', calcularValorTotal); 
 
     function showToast(message, isSuccess = true) {
         Swal.fire({
@@ -107,14 +151,19 @@ document.addEventListener('DOMContentLoaded', function () {
         "language": {
             "url": "https://cdn.datatables.net/plug-ins/1.13.7/i18n/pt-BR.json"
         }
-    });
+    }); 
 
-    // Submissão do Formulário (AJAX)
+    // --- SUBMISSÃO DO FORMULÁRIO ---
     $form.on('submit', function (e) {
         e.preventDefault();
 
-        const formData = new FormData(this);
         const url = BASE_URL + '/pedidos/salvar';
+        const formData = new FormData(this);
+        const $btnSalvar = $('#btn-salvar-pedido'); // ID do botão no modal
+        const textoOriginal = $btnSalvar.html();
+
+        // 1. BLOQUEIA O BOTÃO E MUDA O TEXTO
+        $btnSalvar.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Salvando...');
 
         fetch(url, {
             method: 'POST',
@@ -125,90 +174,80 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (data.success) {
                     $modal.modal('hide');
                     table.ajax.reload();
-                    // Implementar notificação de sucesso
+                    
+                    // Se usar SweetAlert toast
+                    if (typeof Toast !== 'undefined') {
+                         Toast.fire({ icon: 'success', title: data.message });
+                    } else if (typeof msgSucesso === 'function') {
+                         msgSucesso(data.message);
+                    } else {
+                         alert(data.message);
+                    }
+
                 } else {
-                    // Implementar notificação de erro
+                    // Se usar função de erro global
+                    if (typeof msgErro === 'function') msgErro(data.message);
+                    else alert('Erro: ' + data.message);
                 }
+            })
+            .catch(error => {
+                console.error(error);
+                if (typeof msgErro === 'function') msgErro('Erro de comunicação.');
+            })
+            .finally(() => {
+                // 2. REABILITA O BOTÃO SEMPRE (NO SUCESSO OU ERRO)
+                $btnSalvar.prop('disabled', false).html(textoOriginal);
             });
     });
 
-    if ($.fn.select2) {
-        $('#pedido-cliente').select2({
-            placeholder: "Buscar Cliente por Nome, CNPJ ou Código...",
-            dropdownParent: $modal, // Garante que a lista de opções apareça sobre o modal
-            minimumInputLength: 3, // Começa a buscar após 3 caracteres
-            language: "pt-BR",
+    function initSelect2(selector, url, placeholder) {
+        $(selector).select2({
+            dropdownParent: $modal,
+            theme: 'bootstrap-5',
+            placeholder: placeholder,
+            allowClear: true,
+            minimumInputLength: 0,
             ajax: {
-                url: BASE_URL + "/pedidos/clientes-options", // A rota AJAX criada
-                dataType: 'json',
-                delay: 250,
-                data: function (params) {
-                    return {
-                        term: params.term, // Termo de busca
-                        csrf_token: CSRF_TOKEN
-                    };
-                },
-                processResults: function (data) {
-                    // O Controller já retorna no formato {results: []}
-                    return {
-                        results: data.results
-                    };
-                },
-                cache: true
+                url: url, type: 'POST', dataType: 'json', delay: 250, cache: false,
+                data: p => ({ term: p.term || '', csrf_token: CSRF_TOKEN }),
+                processResults: d => ({ results: d.results })
             }
         });
     }
 
+    initSelect2('#pedido-cliente', ROUTE_CLIENTES, 'Selecione o Cliente...');
+
     // Adiciona a lógica de cálculo de valor total após a entrada do bônus
     $bonusInput.on('input', calcularValorTotal);
 
-    // O bônus é uma regra de negócio que altera a quantidade de entrega, mas não o valor total (que é baseado na quantidade vendida)
-    function calcularValorTotal() {
-        // Assume-se que o Valor Total é baseado na QUANTIDADE VENDIDA (sem bônus)
-        const qtd = parseFloat($qtdInput.val()) || 0;
-        const unitario = parseFloat($unitarioInput.val()) || 0;
-
-        // Se a regra de negócio for: Valor Total = Quantidade * Valor Unitário
-        const valorTotalBase = qtd * unitario;
-
-        // Se a regra de negócio for: Valor Total = Quantidade_Com_Bônus * Valor Unitário (como está no Model)
-        // Precisamos do bônus para calcular a Quantidade Com Bônus (qtd_com_bonus)
-        const bonusPerc = parseFloat($bonusInput.val()) || 0;
-        const fatorBonus = 1 + (bonusPerc / 100);
-        const qtdComBonus = Math.round(qtd * fatorBonus);
-
-        const valorTotalCalculado = qtdComBonus * unitario;
-
-        $totalInput.val(valorTotalCalculado.toFixed(2));
-
-        // Se fosse o cálculo do valor total baseado na quantidade *entregue* (com bônus):
-        /* const bonusPerc = parseFloat($bonusInput.val()) || 0;
-        const fatorBonus = 1 + (bonusPerc / 100);
-        const qtdComBonus = qtd * fatorBonus;
-        const valorTotalComBonus = qtdComBonus * unitario;
-        $totalInput.val(valorTotalComBonus.toFixed(2));
-        */
-    }
-
-    // Reseta o formulário e modal ao fechar/abrir em modo CREATE
-    $modal.on('hidden.bs.modal', function () {
-        $idInput.val('');
-        $form[0].reset();
-        $('#modal-pedido-label').text('Adicionar Novo Pedido');
-        // Carrega a próxima OS apenas no modo CREATE
-        if (!$idInput.val()) {
-            loadNextOSNumber();
-        }
-    });
-
-    // Abre o modal em modo 'Criar'
+    // --- RESETAR E PREPARAR MODAL (CRIAR) ---
     $('#btn-adicionar-pedido').on('click', function () {
+        // 1. Limpa o ID para garantir que é uma INSERÇÃO
         $idInput.val('');
+
+        // 2. Reseta os campos nativos do HTML (inputs de texto, number, etc)
         $form[0].reset();
+
+        // 3. Reseta o Select2 do Cliente (ESSENCIAL)
+        // O Select2 precisa desse gatilho para limpar o texto visualmente
+        $('#pedido-cliente').val(null).trigger('change');
+
+        // 4. Habilita o campo OS (caso tenha sido desabilitado na edição)
+        $osInput.prop('disabled', false);
+
+        // 5. Reseta textos e carrega nova OS
         $('#modal-pedido-label').text('Adicionar Novo Pedido');
-        loadNextOSNumber(); // Força a busca da OS
+        loadNextOSNumber();
     });
 
+    // --- GARANTIA AO FECHAR O MODAL ---
+    $modal.on('hidden.bs.modal', function () {
+        // Garante que se o usuário fechar clicando fora, limpa tudo também
+        $idInput.val('');
+        $form[0].reset();
+        $('#pedido-cliente').val(null).trigger('change'); // <--- Adicione isso aqui também
+        $osInput.prop('disabled', false);
+    });
 
     // --- CRUD: EDIÇÃO ---
     $('#tabela-pedidos').on('click', '.btn-editar', function () {
@@ -253,7 +292,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-
     // --- CRUD: DELETAR ---
     $('#tabela-pedidos').on('click', '.btn-deletar', function () {
         const id = $(this).data('id');
@@ -284,32 +322,5 @@ document.addEventListener('DOMContentLoaded', function () {
                     });
                 }
             });
-    });
-
-    // --- SUBMISSÃO DO FORMULÁRIO (AJUSTADA PARA SWEETALERT) ---
-    $form.on('submit', function (e) {
-        e.preventDefault();
-
-        const url = BASE_URL + '/pedidos/salvar';
-        const formData = new FormData(this);
-
-        fetch(url, {
-            method: 'POST',
-            body: formData
-        })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    $modal.modal('hide');
-                    table.ajax.reload();
-                    msgSucesso(data.message);
-                } else {
-                    msgErro(data.message);
-                }
-            })
-            .catch(error => {
-                msgErro('Erro de comunicação com o servidor.');
-            });
-    });
-
+    });    
 });

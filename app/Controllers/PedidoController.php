@@ -7,14 +7,14 @@
  */
 
 require_once ROOT_PATH . '/app/Models/PedidoModel.php';
-require_once ROOT_PATH . '/app/Models/EntidadeModel.php'; // Para buscar Clientes
+require_once ROOT_PATH . '/app/Models/EntidadeModel.php';
 require_once ROOT_PATH . '/app/Models/FuncionarioModel.php';
 require_once ROOT_PATH . '/app/Services/PermissaoService.php';
 
 class PedidoController
 {
     private $pedidoModel;
-    private $entidadeModel;
+    private $entidadePedModel;
     private $funcionarioModel;
 
     public function __construct()
@@ -25,7 +25,7 @@ class PedidoController
         $this->pedidoModel = new PedidoModel();
 
         // Inicializamos Models de apoio para Selects/Options
-        $this->entidadeModel = new EntidadeModel();
+        $this->entidadePedModel = new EntidadeModel();
         $this->funcionarioModel = new FuncionarioModel();
     }
 
@@ -110,7 +110,7 @@ class PedidoController
 
         // 1. Coleta e Sanitiza/Valida dados
         $data = [
-            // CORRIGIDO: Usando os nomes da View (ped_*) e mapeando para o nome do Model (tabela)
+            // Usando os nomes da View (ped_*) e mapeando para o nome do Model (tabela)
             'os_numero'             => filter_input(INPUT_POST, 'ped_os_numero', FILTER_SANITIZE_SPECIAL_CHARS),
             'cliente_entidade_id'   => filter_input(INPUT_POST, 'ped_cliente_id', FILTER_VALIDATE_INT),
             'vendedor_funcionario_id' => filter_input(INPUT_POST, 'ped_vendedor_id', FILTER_VALIDATE_INT),
@@ -139,14 +139,29 @@ class PedidoController
                 $newId = $id;
             } else {
                 // CREATE
+
+                // 1. VERIFICAÇÃO DE DUPLICIDADE ANTES DE INSERIR
+                // Verifica se já existe essa OS no banco
+                $pedidoExistente = $this->pedidoModel->getPedidoPorOS($data['os_numero']);
+
+                if ($pedidoExistente) {
+                    // Retorna erro amigável em vez de estourar erro de SQL
+                    echo json_encode(['success' => false, 'message' => "A OS {$data['os_numero']} já existe! Por favor, clique em 'Novo' novamente para gerar uma nova numeração ou verifique a listagem."]);
+                    exit;
+                }
+
                 $newId = $this->pedidoModel->create($data, $userId);
                 $message = 'Pedido cadastrado com sucesso! (OS: ' . $data['os_numero'] . ')';
             }
-
-            echo json_encode(['success' => true, 'message' => $message, 'pedido_id' => $newId]);
+            echo json_encode(['success' => true, 'message' => $message, 'pedido_id' => $newId ?? $id]);
         } catch (\PDOException $e) {
-            $message = "Erro no banco de dados. " . $e->getMessage();
-            echo json_encode(['success' => false, 'message' => $message]);
+            // Tratamento para caso a verificação falhe e o banco pegue a duplicidade (segunda camada de segurança)
+            if ($e->getCode() == '23000' && strpos($e->getMessage(), 'Duplicate entry') !== false) {
+                echo json_encode(['success' => false, 'message' => "Erro: A OS informada já foi cadastrada por outro usuário."]);
+            } else {
+                $message = "Erro no banco de dados. " . $e->getMessage();
+                echo json_encode(['success' => false, 'message' => $message]);
+            }
         }
     }
 
@@ -156,26 +171,9 @@ class PedidoController
      */
     public function getClientesOptions()
     {
-        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
-        if (!PermissaoService::checarPermissao($cargo, 'Previsoes', 'Ler')) {
-            http_response_code(403);
-            echo json_encode(["results" => [], "error" => "Acesso negado."]);
-            exit;
-        }
-
-        // O Select2 envia o termo de busca via GET/POST
-        $term = $_GET['term'] ?? $_POST['term'] ?? '';
-
-        try {
-            // O EntidadeModel::getClienteOptions() retorna dados formatados [id, text]
-            $options = $this->entidadeModel->getClienteOptions($term);
-
-            // O Select2 espera os dados dentro de uma chave 'results'.
-            echo json_encode(['results' => $options]);
-        } catch (\Exception $e) {
-            error_log("Erro em getClientesOptions: " . $e->getMessage());
-            echo json_encode(['results' => [], 'error' => 'Erro ao buscar clientes.']);
-        }
+        $term = $_POST['term'] ?? '';
+        $options = $this->entidadePedModel->getClienteOptions($term);
+        echo json_encode(['results' => $options]);
     }
 
     /**

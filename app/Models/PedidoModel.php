@@ -12,14 +12,14 @@ require_once ROOT_PATH . '/app/Services/AuditLoggerService.php';
 class PedidoModel
 {
     private $pdo;
-    private $table = 'PREVISOES_VENDAS';
+    private $table = 'previsoes_vendas';
     private $logger;
 
     public function __construct()
     {
         $this->pdo = Database::getInstance()->getConnection();
         $this->logger = new AuditLoggerService();
-    }
+    } 
 
     /**
      * Calcula a quantidade final com bônus e o valor total do pedido.
@@ -232,5 +232,30 @@ class PedidoModel
 
         // Se o resultado for nulo ou vazio, retorna false para o Controller usar o número inicial (ex: 1001)
         return $lastOS ?? false;
+    }
+
+    /**
+     * Busca dados do pedido pelo número da OS.
+     * Usado para:
+     * 1. Integração com Expedição (preenchimento automático).
+     * 2. Validação de duplicidade no cadastro de Pedidos.
+     * * @param string $osNumero
+     * @return array|false
+     */
+    public function getPedidoPorOS($osNumero)
+    {
+        // Faz o JOIN para já trazer o nome do cliente (necessário para o Select2 da expedição)
+        $sql = "SELECT 
+                    pv.*,
+                    e.nome_fantasia as cliente_nome,
+                    e.id as cliente_id
+                FROM {$this->table} pv
+                INNER JOIN ENTIDADES e ON pv.cliente_entidade_id = e.id
+                WHERE pv.os_numero = :os
+                LIMIT 1";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':os' => $osNumero]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 }

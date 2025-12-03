@@ -62,8 +62,9 @@ $csrf_token = $data['csrf_token'] ?? '';
 
                     <div class="col-md-3">
                         <label for="pedido-os-numero" class="form-label">Nº OS (Ordem de Serviço)</label>
-                        <input type="text" class="form-control" id="pedido-os-numero" name="ped_os_numero" placeholder="Ex: 10882 ou LAB-A" required>
+                        <input type="text" class="form-control mascara-numero" id="pedido-os-numero" name="ped_os_numero" placeholder="Ex: 10882" required>
                     </div>
+
                     <div class="col-md-5">
                         <label for="pedido-cliente" class="form-label">Cliente</label>
                         <select class="form-select" id="pedido-cliente" name="ped_cliente_id" required>
@@ -79,19 +80,20 @@ $csrf_token = $data['csrf_token'] ?? '';
 
                     <div class="col-md-3">
                         <label for="pedido-quantidade" class="form-label">Quantidade</label>
-                        <input type="number" step="1" min="1" class="form-control" id="pedido-quantidade" name="ped_quantidade" required>
+                        <input type="text" class="form-control mascara-numero" id="pedido-quantidade" name="ped_quantidade" required>
                     </div>
+
                     <div class="col-md-3">
                         <label for="pedido-bonus-perc" class="form-label">Bônus (%)</label>
-                        <input type="number" step="0.1" min="0" max="100" class="form-control" id="pedido-bonus-perc" name="ped_percentual_bonus" value="0.0">
+                        <input type="text" class="form-control mascara-float" id="pedido-bonus-perc" name="ped_percentual_bonus" value="0.0">
                     </div>
                     <div class="col-md-3">
                         <label for="pedido-valor-unitario" class="form-label">Valor Unitário</label>
-                        <input type="number" step="0.01" min="0" class="form-control" id="pedido-valor-unitario" name="ped_valor_unitario" required>
+                        <input type="text" class="form-control money" id="pedido-valor-unitario" name="ped_valor_unitario" required>
                     </div>
                     <div class="col-md-3">
                         <label for="pedido-valor-total" class="form-label">Valor Total (Calculado)</label>
-                        <input type="text" class="form-control bg-light" id="pedido-valor-total" readonly>
+                        <input type="text" class="form-control bg-light money" id="pedido-valor-total" readonly>
                     </div>
 
                     <hr class="mt-4">
@@ -117,7 +119,8 @@ $csrf_token = $data['csrf_token'] ?? '';
                     </div>
                     <div class="col-md-3">
                         <label for="pedido-forma-pagamento" class="form-label">Forma de Pagamento</label>
-                        <select class="form-select" id="pedido-forma-pagamento" name="ped_forma_pagamento" required>
+                        <select class="form-select" id="pedido-forma-pagamento" name="ped_forma_pagamento">
+                            <option value=""></option>
                             <option value="A vista">À Vista</option>
                             <option value="Boleto">Boleto</option>
                             <option value="Prazo">Prazo</option>
@@ -125,7 +128,8 @@ $csrf_token = $data['csrf_token'] ?? '';
                     </div>
                     <div class="col-md-3">
                         <label for="pedido-condicao" class="form-label">Condição</label>
-                        <select class="form-select" id="pedido-condicao" name="ped_condicao" required>
+                        <select class="form-select" id="pedido-condicao" name="ped_condicao">
+                            <option value=""></option>
                             <option value="Antecipacao">Antecipação</option>
                             <option value="Troca servico">Troca Serviço</option>
                         </select>
@@ -133,7 +137,8 @@ $csrf_token = $data['csrf_token'] ?? '';
 
                     <div class="col-md-3">
                         <label for="pedido-status" class="form-label">Status (Vendas)</label>
-                        <select class="form-select" id="pedido-status" name="ped_status" required>
+                        <select class="form-select" id="pedido-status" name="ped_status">
+                            <option value=""></option>
                             <option value="Confirmado">Confirmado</option>
                             <option value="Cancelado">Cancelado</option>
                             <option value="Adiado">Adiado</option>
@@ -142,7 +147,8 @@ $csrf_token = $data['csrf_token'] ?? '';
                     </div>
                     <div class="col-md-3">
                         <label for="pedido-status-dia" class="form-label">Status Dia (Logística)</label>
-                        <select class="form-select" id="pedido-status-dia" name="ped_status_dia" required>
+                        <select class="form-select" id="pedido-status-dia" name="ped_status_dia">
+                            <option value=""></option>
                             <option value="Reservado no tanque">Reservado no Tanque</option>
                             <option value="entrega de hoje">Entrega de Hoje</option>
                             <option value="entrega de amanha">Entrega de Amanhã</option>

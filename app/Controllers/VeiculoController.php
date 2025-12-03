@@ -118,7 +118,7 @@ class VeiculoController
             'veiculo_renavam'           => filter_input(INPUT_POST, 'veiculo_renavam', FILTER_SANITIZE_SPECIAL_CHARS),
             'veiculo_crv'               => filter_input(INPUT_POST, 'veiculo_crv', FILTER_SANITIZE_SPECIAL_CHARS),
             'veiculo_situacao'          => filter_input(INPUT_POST, 'veiculo_situacao', FILTER_SANITIZE_SPECIAL_CHARS),
-            'veiculo_chassi'            => filter_input(INPUT_POST, 'veiculo_chassi', FILTER_SANITIZE_SPECIAL_CHARS),
+            'veiculo_chassi'            => $POST['veiculo_chassi'],
             'veiculo_licenciamento'     => filter_input(INPUT_POST, 'veiculo_licenciamento', FILTER_VALIDATE_FLOAT),
             'veiculo_ipva'              => filter_input(INPUT_POST, 'veiculo_ipva', FILTER_VALIDATE_FLOAT),
             'veiculo_depreciacao'       => filter_input(INPUT_POST, 'veiculo_depreciacao', FILTER_VALIDATE_FLOAT),
@@ -156,7 +156,7 @@ class VeiculoController
             echo json_encode(['success' => false, 'message' => $message]);
         }
     }
-
+ 
     /**
      * Rota AJAX para buscar um veículo para edição.
      */

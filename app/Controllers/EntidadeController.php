@@ -23,7 +23,7 @@ class EntidadeController
             session_start();
         }
         $this->entidadeModel = new EntidadeModel();
-    }
+    } 
 
     // =================================================================
     // FUNÇÕES DE VIEW (GET)
@@ -163,13 +163,14 @@ class EntidadeController
         }
     }
 
-
-
     /**
      * Salva ou Atualiza uma entidade (POST).
      */
     public function salvarEntidade()
     {
+        // 1. HIGIENIZAÇÃO GERAL (Aplica str_upper em tudo que é texto)
+        $POST = sanitize_input_array($_POST);
+
         $id = filter_input(INPUT_POST, 'ent_codigo', FILTER_VALIDATE_INT);
         $userId = $_SESSION['user_id'] ?? 0;
         $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
@@ -187,8 +188,8 @@ class EntidadeController
         $dadosEntidade = [
             'tipo'                  => ucfirst(filter_input(INPUT_POST, 'tipo') ?? 'cliente'),
             'tipo_pessoa'           => filter_input(INPUT_POST, 'tipo_pessoa'),
-            'razao_social'          => filter_input(INPUT_POST, 'razao_social'),
-            'nome_fantasia'         => filter_input(INPUT_POST, 'nome_fantasia') ?: null,
+            'razao_social'          => $POST['razao_social'],
+            'nome_fantasia'         => $POST['nome_fantasia'] ?? null,
             'codigo_interno'        => filter_input(INPUT_POST, 'codigo_interno') ?: null,
             'cnpj_cpf'              => preg_replace('/\D/', '', filter_input(INPUT_POST, 'cnpj_cpf') ?? ''),
             'inscricao_estadual_rg' => filter_input(INPUT_POST, 'inscricao_estadual_rg') ?: null,
