@@ -1,18 +1,19 @@
 <?php
 
-/**
- * CLASSE MODELO: ManutencaoModel
- * Local: app/Models/ManutencaoModel.php
- * Descrição: Gerencia as operações de CRUD para Manutenções (Header e Itens).
- */
+namespace App\Models;
 
-require_once __DIR__ . '/Database.php';
-require_once ROOT_PATH . '/app/Services/AuditLoggerService.php';
+use App\Core\Database;
+use App\Services\AuditLoggerService;
+use PDO;
+use PDOException;
+use Exception;
 
 class ManutencaoModel
 {
-    private $pdo;
-    private $logger;
+    protected PDO $pdo;
+    protected AuditLoggerService $logger;
+    protected string $headerTable = 'manutencao_header';
+    protected string $itensTable = 'manutencao_itens';
 
     public function __construct()
     {
@@ -99,9 +100,9 @@ class ManutencaoModel
         $where = "WHERE 1=1 ";
         $bindParams = [];
 
-       if (!empty($search)) {
+        if (!empty($search)) {
             $searchTerm = "%$search%";
-            
+
             $where .= "AND (
                 v.placa LIKE :s1 OR 
                 e.nome_fantasia LIKE :s2 OR 
@@ -109,7 +110,7 @@ class ManutencaoModel
                 -- BUSCA PROFUNDA: Verifica se existe algum item com essa descrição vinculado a este cabeçalho
                 EXISTS (SELECT 1 FROM manutencao_itens mi_busca WHERE mi_busca.header_id = mh.id AND mi_busca.descricao LIKE :s4)
             ) ";
-            
+
             $bindParams[':s1'] = $searchTerm;
             $bindParams[':s2'] = $searchTerm;
             $bindParams[':s3'] = $searchTerm;

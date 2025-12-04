@@ -32,9 +32,9 @@ $csrf_token = $data['csrf_token'] ?? '';
                         <th>OS Nº</th>
                         <th>Data Saída</th>
                         <th>Cliente</th>
-                        <th>Quant. Bônus</th>
+                        <th>Quantidade</th>
+                        <th>Valor Unitário</th> 
                         <th>Valor Total</th>
-                        <th>Status</th>
                         <th>Ações</th>
                     </tr>
                 </thead>
@@ -54,7 +54,7 @@ $csrf_token = $data['csrf_token'] ?? '';
             </div>
             <div class="modal-body">
                 <form id="form-pedido" class="row g-3">
-                    <input type="hidden" id="pedido-id" name="ped_id">
+                    <input type="hidden" id="pedido-id" name="id">
                     <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <input type="hidden" id="pedido-vendedor-id" name="ped_vendedor_id" value="<?php echo $_SESSION['user_id'] ?? 0; ?>">
 
@@ -85,7 +85,7 @@ $csrf_token = $data['csrf_token'] ?? '';
 
                     <div class="col-md-3">
                         <label for="pedido-bonus-perc" class="form-label">Bônus (%)</label>
-                        <input type="text" class="form-control mascara-float" id="pedido-bonus-perc" name="ped_percentual_bonus" value="0.0">
+                        <input type="text" class="form-control money" id="pedido-bonus-perc" name="ped_percentual_bonus" value="0.0">
                     </div>
                     <div class="col-md-3">
                         <label for="pedido-valor-unitario" class="form-label">Valor Unitário</label>

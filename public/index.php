@@ -11,24 +11,19 @@ define('ROOT_PATH', dirname(__DIR__));
 
 // 1. Configurações Globais
 session_start(); // Inicia a sessão para controle de login/usuário
-require_once ROOT_PATH . '/config/config.php';
+
+// Carrega o Autoloader Manual
+require_once ROOT_PATH . '/app/Core/Autoload.php';
+
+// Carrega configurações
+//require_once ROOT_PATH . '/config/config.php';
 
 // Carrega funções globais (Helpers)
-require_once '../app/Helpers/functions.php';
+if (file_exists(ROOT_PATH . '/app/Helpers/functions.php')) {
+    require_once ROOT_PATH . '/app/Helpers/functions.php';
+}
 
-// 2. Inclusão dos Controllers
-require_once ROOT_PATH . '/app/Controllers/AuthController.php';
-require_once ROOT_PATH . '/app/Controllers/DashboardController.php';
-require_once ROOT_PATH . '/app/Controllers/PermissaoController.php';
-require_once ROOT_PATH . '/app/Controllers/EntidadeController.php';
-require_once ROOT_PATH . '/app/Controllers/ManutencaoController.php';
-require_once ROOT_PATH . '/app/Controllers/VeiculoController.php';
-require_once ROOT_PATH . '/app/Controllers/FuncionarioController.php';
-require_once ROOT_PATH . '/app/Controllers/PedidoController.php';
-require_once ROOT_PATH . '/app/Controllers/ExpedicaoController.php';
-require_once ROOT_PATH . '/app/Controllers/AbastecimentoController.php';
-
-// 3. Definição do Roteamento
+// 2. Definição do Roteamento
 $route = $_GET['route'] ?? 'home';
 
 // Limpa barras e remove extensões .php
@@ -44,26 +39,41 @@ if (empty($route)) {
     $route = 'home';
 }
 
-// Mapeamento das rotas para [Controller, método]
+// Mapeamento das rotas para [NomeDaClasse, NomeDoMetodo]
 $routes = [
-    // Rotas de Autenticação
-    'login'     => ['AuthController', 'handleLogin'],   // GET: exibe tela | POST: processa login
+    // Autenticação
+    'login'     => ['AuthController', 'handleLogin'],
     'logout'    => ['AuthController', 'logout'],
 
-    // Rotas da Interface
+    // Interface Geral
     'home'      => ['DashboardController', 'showDashboard'],
     'dashboard' => ['DashboardController', 'showDashboard'],
 
-    // Rotas de Permissões
+    // Permissões
     'permissoes'        => ['PermissaoController', 'index'],
     'permissoes/salvar' => ['PermissaoController', 'salvar'],
 
-    // Rotas de Entidades (View)
+    // Entidades
     'clientes'          => ['EntidadeController', 'index'],
     'fornecedores'      => ['EntidadeController', 'index'],
     'transportadoras'   => ['EntidadeController', 'index'],
 
-    // Rotas de Manutenção
+    // Entidades (API/AJAX)
+    'entidades/listar'           => ['EntidadeController', 'listarEntidades'],
+    'entidades/salvar'           => ['EntidadeController', 'salvarEntidade'],
+    'entidades/getEntidade'      => ['EntidadeController', 'getEntidade'],
+    'entidades/deletar'          => ['EntidadeController', 'deleteEntidade'],
+    'entidades/api-busca'        => ['EntidadeController', 'buscarApiDados'],
+    'entidades/clientes-options' => ['EntidadeController', 'getClientesOptions'],
+    'entidades/proximo-codigo'   => ['EntidadeController', 'getProximoCodigo'],
+
+    // Endereços
+    'entidades/enderecos/listar'  => ['EntidadeController', 'listarEnderecosAdicionais'],
+    'entidades/enderecos/salvar'  => ['EntidadeController', 'salvarEnderecoAdicional'],
+    'entidades/enderecos/get'     => ['EntidadeController', 'getEnderecoAdicional'],
+    'entidades/enderecos/deletar' => ['EntidadeController', 'deleteEnderecoAdicional'],
+
+    // Manutenção
     'manutencao'                        => ['ManutencaoController', 'index'],
     'manutencao/listar'                 => ['ManutencaoController', 'listar'],
     'manutencao/salvar'                 => ['ManutencaoController', 'salvar'],
@@ -72,7 +82,7 @@ $routes = [
     'manutencao/getVeiculosOptions'     => ['ManutencaoController', 'getVeiculosOptions'],
     'manutencao/getFornecedoresOptions' => ['ManutencaoController', 'getFornecedoresOptions'],
 
-    // Rotas de Veículos
+    // Veículos
     'veiculos'                           => ['VeiculoController', 'index'],
     'veiculos/listar'                    => ['VeiculoController', 'listarVeiculos'],
     'veiculos/salvar'                    => ['VeiculoController', 'salvarVeiculo'],
@@ -80,40 +90,23 @@ $routes = [
     'veiculos/deletar'                   => ['VeiculoController', 'deleteVeiculo'],
     'veiculos/getProprietariosOptions'   => ['VeiculoController', 'getProprietariosOptions'],
 
-    // Rotas de Integração (AJAX)
-    'entidades/api-busca'           => ['EntidadeController', 'buscarApiDados'],
-    'entidades/clientes-options'    => ['EntidadeController', 'getClientesOptions'],
-    'entidades/proximo-codigo'      => ['EntidadeController', 'getProximoCodigo'],
-
-    // Rotas de Ações CRUD para Entidades
-    'entidades/listar'          => ['EntidadeController', 'listarEntidades'],
-    'entidades/getEntidade'     => ['EntidadeController', 'getEntidade'],
-    'entidades/salvar'          => ['EntidadeController', 'salvarEntidade'],
-    'entidades/deletar'         => ['EntidadeController', 'deleteEntidade'],
-
-    // Rotas de Ações CRUD para Endereços Adicionais
-    'entidades/enderecos/listar'  => ['EntidadeController', 'listarEnderecosAdicionais'],
-    'entidades/enderecos/salvar'  => ['EntidadeController', 'salvarEnderecoAdicional'],
-    'entidades/enderecos/get'     => ['EntidadeController', 'getEnderecoAdicional'],
-    'entidades/enderecos/deletar' => ['EntidadeController', 'deleteEnderecoAdicional'],
-
-    // Rotas de Funcionários
+    // Funcionários
     'usuarios'          => ['FuncionarioController', 'index'],
     'usuarios/listar'   => ['FuncionarioController', 'listarFuncionarios'],
     'usuarios/get'      => ['FuncionarioController', 'getFuncionario'],
     'usuarios/salvar'   => ['FuncionarioController', 'salvarFuncionario'],
     'usuarios/deletar'  => ['FuncionarioController', 'deleteFuncionario'],
 
-    // Rotas de Vendas/Pedidos
+    // Pedidos
     'pedidos'                    => ['PedidoController', 'index'],
-    'pedidos/listar'             => ['PedidoController', 'listarPedidos'],
-    'pedidos/salvar'             => ['PedidoController', 'salvarPedido'],
-    'pedidos/getClientesOptions' => ['PedidoController', 'getClientesOptions'],
-    'pedidos/get'                => ['PedidoController', 'getPedido'],
+    'pedidos/listar'             => ['PedidoController', 'listar'],
+    'pedidos/salvar'             => ['PedidoController', 'salvar'],
+    'pedidos/get'                => ['PedidoController', 'get'],
     'pedidos/deletar'            => ['PedidoController', 'deletePedido'],
+    'pedidos/getClientesOptions' => ['PedidoController', 'getClientesOptions'],
     'pedidos/next-os'            => ['PedidoController', 'getNextOSNumber'],
 
-    // Rotas de Logística/Expedição
+    // Expedição
     'expedicao'                        => ['ExpedicaoController', 'index'],
     'expedicao/listar'                 => ['ExpedicaoController', 'listar'],
     'expedicao/salvar'                 => ['ExpedicaoController', 'salvar'],
@@ -126,7 +119,7 @@ $routes = [
     'expedicao/reordenar'              => ['ExpedicaoController', 'reordenar'],
     'expedicao/romaneio'               => ['ExpedicaoController', 'gerarRomaneio'],
 
-    // Rotas de Abastecimento (Frota)
+    // Abastecimentos
     'abastecimentos'                    => ['AbastecimentoController', 'index'],
     'abastecimentos/listar'             => ['AbastecimentoController', 'listar'],
     'abastecimentos/salvar'             => ['AbastecimentoController', 'salvar'],
@@ -135,12 +128,12 @@ $routes = [
     'abastecimentos/getPostosOptions'   => ['AbastecimentoController', 'getPostosOptions'],
     'abastecimentos/getVeiculosOptions' => ['AbastecimentoController', 'getVeiculosOptions'],
 
-    // Rotas de Relatórios
+    // Relatórios
     'relatorios'                => ['RelatorioController', 'index'],
     'relatorios/manutencao-pdf' => ['RelatorioController', 'gerarManutencaoPdf'],
 ];
 
-// 4. Rotas públicas (não exigem login)
+// 3. Rotas públicas (não exigem login)
 $public_routes = ['login', 'logout', 'home'];
 $is_public_route = in_array($route, $public_routes);
 $is_logged_in = !empty($_SESSION['logged_in']);
@@ -157,12 +150,15 @@ if ($is_logged_in && in_array($route, ['login', 'home'])) {
     exit;
 }
 
-// 5. Execução do Controller
+// 4. Execução do Controller
 if (isset($routes[$route])) {
     [$controllerName, $methodName] = $routes[$route];
 
-    if (class_exists($controllerName)) {
-        $controller = new $controllerName();
+    // Namespace completo
+    $controllerClass = "App\\Controllers\\" . $controllerName;
+
+    if (class_exists($controllerClass)) {
+        $controller = new $controllerClass();
 
         if (method_exists($controller, $methodName)) {
             // handleLogin decide GET ou POST
@@ -173,7 +169,7 @@ if (isset($routes[$route])) {
         }
     } else {
         http_response_code(404);
-        echo "Erro 404: Controller '{$controllerName}' não encontrado.";
+        echo "Erro 404: Controller '{$controllerClass}' não encontrado ou não carregado pelo Autoload.";
     }
 } else {
     http_response_code(404);

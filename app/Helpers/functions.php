@@ -130,3 +130,25 @@ if (!function_exists('format_documento')) {
         return $doc;
     }
 }
+
+if (!function_exists('format_date_db')) {
+    /**
+     * Converte data BR (dd/mm/yyyy) para DB (yyyy-mm-dd).
+     * Se já estiver em formato ISO ou vazio, retorna como está.
+     */
+    function format_date_db($date)
+    {
+        if (empty($date)) return null;
+
+        // Se tiver barra, assume formato BR
+        if (strpos($date, '/') !== false) {
+            $parts = explode('/', $date);
+            if (count($parts) === 3) {
+                // Inverte para YYYY-MM-DD
+                return "{$parts[2]}-{$parts[1]}-{$parts[0]}";
+            }
+        }
+
+        return $date; // Já deve estar em YYYY-MM-DD
+    }
+}

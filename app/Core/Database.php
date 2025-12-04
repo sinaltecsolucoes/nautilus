@@ -1,21 +1,22 @@
 <?php
 
+namespace App\Core;
+
+use PDO;
+use PDOException;
+
 /**
- * CLASSE MODELO: Database
- * Local: app/Models/Database.php
- * Descrição: Classe Singleton para conexão segura com o MySQL usando PDO.
- * Base para todos os outros Models.
+ * Class Database
+ * Singleton para conexão segura com MySQL via PDO.
+ * @package App\Core
  */
-
-// Inclui as configurações de segurança e credenciais
-require_once __DIR__ . '/../../config/config.php';
-
 class Database
 {
     // Variável para armazenar a única instância da conexão PDO
-    private static $instance = null;
+    private static ?Database $instance = null;
+
     // Variável para armazenar a conexão PDO
-    private $conn;
+    private PDO $conn;
 
     /**
      * Construtor privado (padrão Singleton)
@@ -23,6 +24,11 @@ class Database
      */
     private function __construct()
     {
+        $configPath = __DIR__ . '/../../config/config.php';
+        if (file_exists($configPath)) {
+            require_once $configPath;
+        }
+
         // Define as opções de conexão do PDO
         $options = [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, // Lançar exceções em caso de erro
@@ -31,15 +37,23 @@ class Database
         ];
 
         // String de conexão
-        $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4";
+        $dsn = "mysql:host=" . (defined('DB_HOST') ? DB_HOST : 'localhost') .
+            ";dbname=" . (defined('DB_NAME') ? DB_NAME : 'test') .
+            ";charset=utf8mb4";
 
         try {
             // Cria a conexão PDO
-            $this->conn = new PDO($dsn, DB_USER, DB_PASS, $options);
-        } catch (\PDOException $e) {
+            $this->conn = new PDO(
+                $dsn,
+                defined('   DB_USER') ? DB_USER : 'root',
+                defined('DB_PASS') ? DB_PASS : '',
+                $options
+            );
+        } catch (PDOException $e) {
             // Em caso de erro, exibe uma mensagem segura e registra o erro (idealmente em logs)
             // Em produção, não exibirá a mensagem completa do erro!
-            die("Erro de Conexão com o Banco de Dados: " . $e->getMessage());
+            error_log("Erro de conexão do Banco de Dados: " . $e->getMessage());
+            die("Erro de Crítico com o Banco de Dados.");
         }
     }
 
@@ -47,7 +61,7 @@ class Database
      * Método público estático para obter a única instância da classe de conexão.
      * @return Database A instância da conexão.
      */
-    public static function getInstance()
+    public static function getInstance(): Database
     {
         if (self::$instance === null) {
             self::$instance = new Database();
@@ -64,7 +78,3 @@ class Database
         return $this->conn;
     }
 }
-
-// Exemplo de como usar (Para testes iniciais):
-// $db = Database::getInstance();
-// $conn = $db->getConnection();

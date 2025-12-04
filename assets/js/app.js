@@ -58,8 +58,48 @@ if ($.fn.dataTable) {
     // Escuta eventos de erro em qualquer tabela do sistema
     $(document).on('error.dt', function (e, settings, techNote, message) {
         console.error('Erro DataTables:', message);
-        
+
         // Usa nossa função global do SweetAlert
         msgErro('Falha ao carregar os dados da tabela.<br><small>Verifique o console para mais detalhes.</small>');
     });
+}
+
+/**
+ * Wrapper global para requisições POST (JSON ou FormData)
+ * Uso: apiPost(url, dados, true|false)
+ * Se third parametro = true → envia como FormData
+ */
+async function apiPost(url, data = {}, isFormData = false) {
+    try {
+        let options = {
+            method: "POST",
+            headers: {
+                "X-Requested-With": "XMLHttpRequest"
+            }
+        };
+
+        if (isFormData) {
+            // FormData não deve ter Content-Type definido manualmente
+            options.body = data;
+        } else {
+            options.headers["Content-Type"] = "application/json";
+            options.body = JSON.stringify(data);
+        }
+
+        const response = await fetch(url, options);
+
+        // Se o servidor retornar HTML ou erro 500
+        const text = await response.text();
+
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            console.error("Resposta inválida do servidor:", text);
+            throw new Error("Resposta inválida do servidor (não é JSON).");
+        }
+
+    } catch (error) {
+        console.error("apiPost ERROR:", error);
+        throw error;
+    }
 }

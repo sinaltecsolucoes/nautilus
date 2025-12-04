@@ -1,18 +1,17 @@
 <?php
 
-/**
- * CLASSE MODELO: AbastecimentoModel
- * Local: app/Models/AbastecimentoModel.php
- */
+namespace App\Models;
 
-require_once __DIR__ . '/Database.php';
-require_once ROOT_PATH . '/app/Services/AuditLoggerService.php';
+use App\Core\Database;
+use App\Services\AuditLoggerService;
+use PDO;
+use PDOException;
 
 class AbastecimentoModel
 {
-    private $pdo;
-    private $table = 'abastecimentos_v2';
-    private $logger;
+    private PDO $pdo;
+    private AuditLoggerService $logger;
+    private string $table = 'abastecimentos_v2';
 
     public function __construct()
     {
@@ -20,79 +19,88 @@ class AbastecimentoModel
         $this->logger = new AuditLoggerService();
     }
 
-    // Salvar (Criar)
-       public function create($data)
+    /**
+     * Cria um novo abastecimento.
+     * @param array $data Dados do formulário.
+     * @return int|false ID criado ou false.
+     */
+    public function create(array $data)
     {
         $this->pdo->beginTransaction();
         try {
-            // Agora salvamos entidade_id (posto) e veiculo_id em vez de texto solto
             $sql = "INSERT INTO {$this->table} 
                 (funcionario_id, entidade_id, veiculo_id, data_abastecimento, numero_cupom, 
                  descricao_combustivel, valor_unitario, total_litros, valor_total, quilometro_abast)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                VALUES (:func_id, :posto_id, :veiculo_id, :data, :cupom, :combustivel, :vl_unit, :litros, :total, :km)";
 
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute([
-                $data['funcionario_id'],
-                $data['entidade_id'], // ID do Posto (Entidade)
-                $data['veiculo_id'],  // ID do Veículo
-                $data['data_abastecimento'],
-                $data['numero_cupom'],
-                $data['descricao_combustivel'],
-                $data['valor_unitario'],
-                $data['total_litros'],
-                $data['valor_total'],
-                $data['quilometro_abast']
+                ':func_id'     => $data['funcionario_id'],
+                ':posto_id'    => $data['entidade_id'],
+                ':veiculo_id'  => $data['veiculo_id'],
+                ':data'        => $data['data_abastecimento'],
+                ':cupom'       => $data['numero_cupom'],
+                ':combustivel' => $data['descricao_combustivel'],
+                ':vl_unit'     => $data['valor_unitario'],
+                ':litros'      => $data['total_litros'],
+                ':total'       => $data['valor_total'],
+                ':km'          => $data['quilometro_abast']
             ]);
 
-            $id = $this->pdo->lastInsertId();
-            $this->logger->log('CREATE', $this->table, $id, null, $data);
+            $id = (int)$this->pdo->lastInsertId();
+
+            // Log simplificado
+            $this->logger->log('CREATE', $this->table, $id, null, ['cupom' => $data['numero_cupom']]);
+
             $this->pdo->commit();
             return $id;
-        } catch (\PDOException $e) {
+        } catch (PDOException $e) {
             $this->pdo->rollBack();
             return false;
         }
     }
 
-    // Atualizar
-   public function update($id, $data)
+    /**
+     * Atualiza um abastecimento.
+     */
+    public function update(int $id, array $data): bool
     {
         $this->pdo->beginTransaction();
         try {
             $antigo = $this->find($id);
 
             $sql = "UPDATE {$this->table} SET 
-                funcionario_id = ?, entidade_id = ?, veiculo_id = ?, data_abastecimento = ?, 
-                numero_cupom = ?, descricao_combustivel = ?, valor_unitario = ?, 
-                total_litros = ?, valor_total = ?, quilometro_abast = ?
-                WHERE id = ?";
+                funcionario_id = :func_id, entidade_id = :posto_id, veiculo_id = :veiculo_id, 
+                data_abastecimento = :data, numero_cupom = :cupom, descricao_combustivel = :combustivel, 
+                valor_unitario = :vl_unit, total_litros = :litros, valor_total = :total, 
+                quilometro_abast = :km
+                WHERE id = :id";
 
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute([
-                $data['funcionario_id'],
-                $data['entidade_id'],
-                $data['veiculo_id'],
-                $data['data_abastecimento'],
-                $data['numero_cupom'],
-                $data['descricao_combustivel'],
-                $data['valor_unitario'],
-                $data['total_litros'],
-                $data['valor_total'],
-                $data['quilometro_abast'],
-                $id
+                ':func_id'     => $data['funcionario_id'],
+                ':posto_id'    => $data['entidade_id'],
+                ':veiculo_id'  => $data['veiculo_id'],
+                ':data'        => $data['data_abastecimento'],
+                ':cupom'       => $data['numero_cupom'],
+                ':combustivel' => $data['descricao_combustivel'],
+                ':vl_unit'     => $data['valor_unitario'],
+                ':litros'      => $data['total_litros'],
+                ':total'       => $data['valor_total'],
+                ':km'          => $data['quilometro_abast'],
+                ':id'          => $id
             ]);
 
             $this->logger->log('UPDATE', $this->table, $id, $antigo, $data);
             $this->pdo->commit();
             return true;
-        } catch (\PDOException $e) {
+        } catch (PDOException $e) {
             $this->pdo->rollBack();
             throw $e;
         }
     }
 
-    public function find($id)
+    public function find(int $id)
     {
         $sql = "SELECT 
                     a.*,
@@ -108,42 +116,39 @@ class AbastecimentoModel
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
-    // Deletar
-    public function delete($id)
+    public function delete(int $id): bool
     {
         $this->pdo->beginTransaction();
         try {
             $antigo = $this->find($id);
-            $stmt = $this->pdo->prepare("DELETE FROM {$this->table} WHERE id = ?");
-            $stmt->execute([$id]);
+            $stmt = $this->pdo->prepare("DELETE FROM {$this->table} WHERE id = :id");
+            $success = $stmt->execute([':id' => $id]);
 
-            if ($stmt->rowCount() > 0) {
+            if ($success) {
                 $this->logger->log('DELETE', $this->table, $id, $antigo, null);
             }
 
             $this->pdo->commit();
             return true;
-        } catch (\PDOException $e) {
+        } catch (PDOException $e) {
             $this->pdo->rollBack();
             throw $e;
         }
     }
 
-    // DataTables (Server-Side)
-      public function getForDataTable(array $params): array
+    public function getForDataTable(array $params): array
     {
-        $start = $params['start'] ?? 0;
-        $length = $params['length'] ?? 10;
-        $searchValue = $params['search']['value'] ?? ''; 
+        $start = (int)($params['start'] ?? 0);
+        $length = (int)($params['length'] ?? 10);
+        $search = $params['search']['value'] ?? '';
 
-        // Mapeamento correto para ordenação
         $columnsMap = [
             0 => 'a.data_abastecimento',
-            1 => 'f.nome_comum',     // Motorista (Apelido)
-            2 => 'e.nome_fantasia',  // Posto
+            1 => 'f.nome_comum',
+            2 => 'e.nome_fantasia',
             3 => 'a.descricao_combustivel',
             4 => 'a.numero_cupom',
-            5 => 'v.placa',          // Veículo
+            5 => 'v.placa',
             6 => 'a.quilometro_abast',
             7 => 'a.total_litros',
             8 => 'a.valor_total',
@@ -153,55 +158,48 @@ class AbastecimentoModel
         $where = "WHERE 1=1 ";
         $bindParams = [];
 
-        if (!empty($searchValue)) {
+        if (!empty($search)) {
             $where .= "AND (v.placa LIKE :s OR f.nome_comum LIKE :s OR e.nome_fantasia LIKE :s OR a.numero_cupom LIKE :s) ";
-            $bindParams[':s'] = "%" . $searchValue . "%";
+            $bindParams[':s'] = "%{$search}%";
         }
 
-        // Ordenação Dinâmica
         $orderBy = "ORDER BY a.data_abastecimento DESC";
-        if (isset($params['order']) && !empty($params['order'])) {
-            $colIndex = intval($params['order'][0]['column']);
-            $colDir = strtoupper($params['order'][0]['dir']);
+        if (!empty($params['order'])) {
+            $colIndex = (int)$params['order'][0]['column'];
+            $colDir = strtoupper($params['order'][0]['dir']) === 'ASC' ? 'ASC' : 'DESC';
             if (isset($columnsMap[$colIndex])) {
-                $orderBy = "ORDER BY " . $columnsMap[$colIndex] . " " . ($colDir === 'ASC' ? 'ASC' : 'DESC');
+                $orderBy = "ORDER BY {$columnsMap[$colIndex]} {$colDir}";
             }
         }
 
-        // SQL Base com JOINs para pegar nomes
         $sqlBase = "FROM {$this->table} a 
                     LEFT JOIN funcionarios f ON a.funcionario_id = f.id
                     LEFT JOIN entidades e ON a.entidade_id = e.id
                     LEFT JOIN veiculos v ON a.veiculo_id = v.id";
 
-        // Totais
         $totalRecords = $this->pdo->query("SELECT COUNT(a.id) FROM {$this->table} a")->fetchColumn();
 
-        $stmtFiltered = $this->pdo->prepare("SELECT COUNT(a.id) {$sqlBase} {$where}");
-        $stmtFiltered->execute($bindParams);
-        $totalFiltered = $stmtFiltered->fetchColumn();
+        $stmtF = $this->pdo->prepare("SELECT COUNT(a.id) {$sqlBase} {$where}");
+        $stmtF->execute($bindParams);
+        $totalFiltered = $stmtF->fetchColumn();
 
-        // Dados
         $sqlData = "SELECT 
                         a.*, 
                         f.nome_comum as motorista_apelido,
                         e.nome_fantasia as nome_posto, e.cnpj_cpf as cnpj_posto,
                         v.placa as placa_veiculo
-                    {$sqlBase}
-                    {$where} 
-                    {$orderBy} 
-                    LIMIT :start, :length";
+                    {$sqlBase} {$where} {$orderBy} LIMIT :start, :length";
 
-        $stmtData = $this->pdo->prepare($sqlData);
-        foreach ($bindParams as $k => $v) $stmtData->bindValue($k, $v);
-        $stmtData->bindValue(':start', (int)$start, PDO::PARAM_INT);
-        $stmtData->bindValue(':length', (int)$length, PDO::PARAM_INT);
-        $stmtData->execute();
+        $stmt = $this->pdo->prepare($sqlData);
+        foreach ($bindParams as $k => $v) $stmt->bindValue($k, $v);
+        $stmt->bindValue(':start', $start, PDO::PARAM_INT);
+        $stmt->bindValue(':length', $length, PDO::PARAM_INT);
+        $stmt->execute();
 
         return [
-            'total' => $totalRecords,
-            'totalFiltered' => $totalFiltered,
-            'data' => $stmtData->fetchAll(PDO::FETCH_ASSOC)
+            'total' => (int)$totalRecords,
+            'totalFiltered' => (int)$totalFiltered,
+            'data' => $stmt->fetchAll(PDO::FETCH_ASSOC)
         ];
     }
 }

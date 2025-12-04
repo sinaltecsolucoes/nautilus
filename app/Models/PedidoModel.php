@@ -1,67 +1,112 @@
 <?php
 
+namespace App\Models;
+
+use App\Core\Database; // Assumindo que sua classe de conexão esteja aqui
+use App\Services\AuditLoggerService;
+use PDO;
+use PDOException;
+
 /**
- * CLASSE MODELO: PedidoModel
- * Local: app/Models/PedidoModel.php
- * Descrição: Gerencia as operações de CRUD na tabela PREVISOES_VENDAS (Pedidos).
+ * Class PedidoModel
+ * Gerencia a tabela de Previsões de Vendas.
+ * * @package App\Models
+ * @version 1.1.0
  */
-
-require_once __DIR__ . '/Database.php';
-require_once ROOT_PATH . '/app/Services/AuditLoggerService.php';
-
 class PedidoModel
 {
-    private $pdo;
-    private $table = 'previsoes_vendas';
-    private $logger;
+    // =========================================================================
+    // 1. PROPRIEDADES E CONSTANTES
+    // =========================================================================
+
+    /** @var PDO Conexão com o banco */
+    protected PDO $pdo;
+
+    /** @var AuditLoggerService Serviço de Auditoria */
+    protected AuditLoggerService $logger;
+
+    /** @var string Nome da tabela principal */
+    protected string $table = 'previsoes_vendas';
+
+    /** @var array Campos permitidos para mass assignment (simulação) */
+    protected array $fillable = [
+        'os_numero',
+        'cliente_entidade_id',
+        'vendedor_funcionario_id',
+        'data_saida',
+        'quantidade',
+        'valor_unitario',
+        'valor_total'
+    ];
+
+    // =========================================================================
+    // 2. CONSTRUTOR E INICIALIZAÇÃO
+    // =========================================================================
 
     public function __construct()
     {
+        // Injeção de dependência manual (idealmente viria de um Container)
         $this->pdo = Database::getInstance()->getConnection();
         $this->logger = new AuditLoggerService();
-    } 
+    }
+
+    // =========================================================================
+    // 3. RELACIONAMENTOS (Simulados em SQL)
+    // =========================================================================
 
     /**
-     * Calcula a quantidade final com bônus e o valor total do pedido.
-     * @param float $quantidade Quantidade base (larvas).
-     * @param float $percentualBonus Percentual de bônus (0.00 a 100.00).
-     * @param float $valorUnitario Valor unitário do produto.
-     * @return array [quantidade_com_bonus, valor_total]
+     * Define o JOIN padrão para trazer dados do Cliente e Vendedor.
+     * @return string Trecho SQL para Joins.
      */
-    private function calcularMetricas(float $quantidade, float $percentualBonus, float $valorUnitario): array
+    protected function getDefaultJoins(): string
     {
-        // Quantidade com Bônus = Quantidade * (1 + (Percentual Bônus / 100))
-        $fatorBonus = 1 + ($percentualBonus / 100);
-        $quantidadeComBonus = round($quantidade * $fatorBonus);
+        return " JOIN ENTIDADES c ON pv.cliente_entidade_id = c.id
+                 JOIN FUNCIONARIOS v ON pv.vendedor_funcionario_id = v.id ";
+    }
 
-        // Valor Total = Quantidade com Bônus * Valor Unitário
-        $valorTotal = $quantidadeComBonus * $valorUnitario;
+    // =========================================================================
+    // 4. MÉTODOS DE ESCOPO/QUERY (CRUD)
+    // =========================================================================
 
-        return [
-            'quantidade_com_bonus' => (int)$quantidadeComBonus,
-            'valor_total' => round($valorTotal, 2)
-        ];
+    /**
+     * Busca um pedido por ID com todos os relacionamentos necessários.
+     * @param int $id
+     * @return array|false
+     */
+    public function find(int $id)
+    {
+        $sql = "SELECT 
+                    pv.*, 
+                    c.nome_fantasia AS cliente_nome,
+                    c.razao_social AS cliente_razao
+                FROM {$this->table} pv
+                LEFT JOIN ENTIDADES c ON pv.cliente_entidade_id = c.id
+                WHERE pv.id = :id";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':id' => $id]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
     /**
-     * Cria um novo Pedido/Previsão de Venda.
-     * @param array $data Dados do pedido (sem 'quantidade_com_bonus' e 'valor_total').
-     * @param int $userId ID do funcionário logado (para auditoria).
-     * @return int|false O ID do novo pedido ou false em caso de erro.
+     * Cria um novo registro no banco.
+     * @param array $data Dados sanitizados.
+     * @param int $userId ID do usuário logado.
+     * @return int ID do registro criado.
+     * @throws PDOException
      */
-    public function create(array $data, int $userId)
+    public function create(array $data, int $userId): int
     {
         $this->pdo->beginTransaction();
 
         try {
-            // 1. CALCULA MÉTRICAS
+            // Lógica de Negócio: Cálculo de Métricas antes de salvar
             $metricas = $this->calcularMetricas(
-                $data['quantidade'],
-                $data['percentual_bonus'],
-                $data['valor_unitario']
+                (float)$data['quantidade'],
+                (float)($data['percentual_bonus'] ?? 0),
+                (float)$data['valor_unitario']
             );
 
-            // 2. INSERE O PEDIDO
             $sql = "INSERT INTO {$this->table} 
                 (os_numero, cliente_entidade_id, vendedor_funcionario_id, data_saida,
                  quantidade, percentual_bonus, quantidade_com_bonus, valor_unitario, valor_total,
@@ -76,9 +121,9 @@ class PedidoModel
                 $data['data_saida'],
                 $data['quantidade'],
                 $data['percentual_bonus'],
-                $metricas['quantidade_com_bonus'], // RESULTADO DO CÁLCULO
+                $metricas['quantidade_com_bonus'],
                 $data['valor_unitario'],
-                $metricas['valor_total'],         // RESULTADO DO CÁLCULO
+                $metricas['valor_total'],
                 $data['forma_pagamento'],
                 $data['condicao'],
                 $data['salinidade'] ?? null,
@@ -87,98 +132,174 @@ class PedidoModel
                 $data['status_dia'] ?? null,
             ]);
 
-            $pedidoId = $this->pdo->lastInsertId();
+            $id = (int)$this->pdo->lastInsertId();
 
-            // LOG DE AUDITORIA: CREATE
-            $this->logger->log(
-                'CREATE',
-                $this->table,
-                $pedidoId,
-                null,
-                $data,
-                $userId
-            );
+            // Log de Auditoria
+            $this->logger->log('CREATE', $this->table, $id, null, $data, $userId);
 
             $this->pdo->commit();
-            return $pedidoId;
-        } catch (\PDOException $e) {
+            return $id;
+        } catch (PDOException $e) {
             $this->pdo->rollBack();
             throw $e;
         }
     }
 
     /**
-     * Busca todos os pedidos para o DataTables (Foco em listagem de previsão).
-     * @param array $params Parâmetros DataTables.
-     * @return array Dados formatados.
+     * Atualiza um pedido existente.
+     * @param int $id ID do pedido.
+     * @param array $data Dados do formulário.
+     * @param int $userId ID do usuário logado.
+     * @return bool
+     */
+    public function update(int $id, array $data, int $userId): bool
+    {
+        $this->pdo->beginTransaction();
+
+        try {
+            // 1. Busca dados antigos para o Log de Auditoria
+            $dadosAntigos = $this->find($id);
+
+            if (!$dadosAntigos) {
+                throw new \Exception("Pedido não encontrado.");
+            }
+
+            // 2. Recalcula Métricas (Importante se mudou quantidade ou valor)
+            $metricas = $this->calcularMetricas(
+                (float)$data['quantidade'],
+                (float)($data['percentual_bonus'] ?? 0),
+                (float)$data['valor_unitario']
+            );
+
+            // 3. Atualiza no Banco
+            $sql = "UPDATE {$this->table} SET 
+                os_numero = :os,
+                cliente_entidade_id = :cliente,
+                vendedor_funcionario_id = :vendedor,
+                data_saida = :data,
+                quantidade = :qtd,
+                percentual_bonus = :perc,
+                quantidade_com_bonus = :qtd_bonus,
+                valor_unitario = :unit,
+                valor_total = :total,
+                forma_pagamento = :pgto,
+                condicao = :cond,
+                salinidade = :sal,
+                divisao = :div,
+                status = :status,
+                status_dia = :status_dia,
+                data_atualizacao = NOW()
+                WHERE id = :id";
+
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([
+                ':os'        => $data['os_numero'],
+                ':cliente'   => $data['cliente_entidade_id'],
+                ':vendedor'  => $data['vendedor_funcionario_id'],
+                ':data'      => $data['data_saida'],
+                ':qtd'       => $data['quantidade'],
+                ':perc'      => $data['percentual_bonus'],
+                ':qtd_bonus' => $metricas['quantidade_com_bonus'],
+                ':unit'      => $data['valor_unitario'],
+                ':total'     => $metricas['valor_total'],
+                ':pgto'      => $data['forma_pagamento'],
+                ':cond'      => $data['condicao'],
+                ':sal'       => $data['salinidade'] ?? null,
+                ':div'       => $data['divisao'] ?? null,
+                ':status'    => $data['status'] ?? 'Confirmado',
+                ':status_dia' => $data['status_dia'] ?? null,
+                ':id'        => $id
+            ]);
+
+            // 4. Log de Auditoria (UPDATE)
+            $this->logger->log('UPDATE', $this->table, $id, $dadosAntigos, $data, $userId);
+
+            $this->pdo->commit();
+            return true;
+        } catch (\Exception $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Método específico para DataTables (Server-side).
      */
     public function findAllForDataTable(array $params, int $vendedorId = 0): array
     {
-        // Esta é uma simplificação. A query real precisa de JOINS.
         $draw = $params['draw'] ?? 1;
-        $start = $params['start'] ?? 0;
-        $length = $params['length'] ?? 10;
-        $searchValue = $params['search']['value'] ?? '';
-
-        $sqlBase = "FROM {$this->table} pv 
-                    JOIN ENTIDADES c ON pv.cliente_entidade_id = c.id
-                    JOIN FUNCIONARIOS v ON pv.vendedor_funcionario_id = v.id";
+        $start = (int)($params['start'] ?? 0);
+        $length = (int)($params['length'] ?? 10);
+        $search = $params['search']['value'] ?? '';
 
         $conditions = [];
-        $queryParams = [];
+        $bindings = [];
 
-        // Se for um Vendedor, mostra apenas os pedidos dele (ACL simples)
+        // Filtros (Scopes)
         if ($vendedorId > 0) {
             $conditions[] = "pv.vendedor_funcionario_id = :vendedor_id";
-            $queryParams[':vendedor_id'] = $vendedorId;
+            $bindings[':vendedor_id'] = $vendedorId;
         }
 
-        if (!empty($searchValue)) {
-            $conditions[] = "(pv.os_numero LIKE :search OR c.razao_social LIKE :search)";
-            $queryParams[':search'] = '%' . $searchValue . '%';
+        if (!empty($search)) {
+            $conditions[] = "(pv.os_numero LIKE :search OR c.razao_social LIKE :search OR c.nome_fantasia LIKE :search)";
+            $bindings[':search'] = "%{$search}%";
         }
 
-        $whereClause = !empty($conditions) ? " WHERE " . implode(" AND ", $conditions) : "";
+        $where = !empty($conditions) ? " WHERE " . implode(" AND ", $conditions) : "";
+        $joins = $this->getDefaultJoins(); // Reutiliza o join padrão
 
-        // Contagem Total e Filtrada... (simplificado)
+        // Queries
         $totalRecords = $this->pdo->query("SELECT COUNT(id) FROM {$this->table}")->fetchColumn();
-        $totalFiltered = $totalRecords;
+
+        $sqlCount = "SELECT COUNT(pv.id) FROM {$this->table} pv {$joins} {$where}";
+        $stmtCount = $this->pdo->prepare($sqlCount);
+        $stmtCount->execute($bindings);
+        $totalFiltered = $stmtCount->fetchColumn();
 
         $sqlData = "SELECT 
-                        pv.id, pv.os_numero, pv.data_saida, pv.quantidade_com_bonus, pv.valor_total,
-                        pv.status, pv.status_dia, c.nome_fantasia AS cliente_nome, v.nome_completo AS vendedor_nome
-                    $sqlBase $whereClause 
+                        pv.id, pv.os_numero, pv.data_saida, pv.quantidade,
+                        pv.quantidade_com_bonus, pv.valor_unitario, pv.valor_total,
+                        pv.status, pv.status_dia, 
+                        c.nome_fantasia AS cliente_nome, 
+                        v.nome_completo AS vendedor_nome
+                    FROM {$this->table} pv 
+                    {$joins} {$where} 
                     ORDER BY pv.data_saida DESC 
                     LIMIT :start, :length";
 
         $stmt = $this->pdo->prepare($sqlData);
-        $stmt->bindValue(':start', (int) $start, PDO::PARAM_INT);
-        $stmt->bindValue(':length', (int) $length, PDO::PARAM_INT);
-        foreach ($queryParams as $key => &$value) {
-            $stmt->bindParam($key, $value);
+        $stmt->bindValue(':start', $start, PDO::PARAM_INT);
+        $stmt->bindValue(':length', $length, PDO::PARAM_INT);
+        foreach ($bindings as $k => $v) {
+            $stmt->bindValue($k, $v);
         }
         $stmt->execute();
-        $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         return [
-            "draw" => (int) $draw,
-            "recordsTotal" => (int) $totalRecords,
-            "recordsFiltered" => (int) $totalFiltered,
-            "data" => $data
+            "draw" => (int)$draw,
+            "recordsTotal" => (int)$totalRecords,
+            "recordsFiltered" => (int)$totalFiltered,
+            "data" => $stmt->fetchAll(PDO::FETCH_ASSOC)
         ];
     }
 
+    // =========================================================================
+    // 5. MÉTODOS CUSTOMIZADOS (Regras de Negócio)
+    // =========================================================================
+
     /**
-     * Busca um pedido por ID (para edição).
-     * @param int $id O ID do pedido.
-     * @return array|false Os dados do pedido ou false se não encontrado.
+     * Calcula regras de negócio para valores e bônus.
      */
-    public function find(int $id)
+    private function calcularMetricas(float $qtd, float $bonusPerc, float $valorUnit): array
     {
-        $sql = "SELECT * FROM {$this->table} WHERE id = :id";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':id' => $id]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        $fatorBonus = 1 + ($bonusPerc / 100);
+        $qtdBonus = round($qtd * $fatorBonus);
+
+        return [
+            'quantidade_com_bonus' => (int)$qtdBonus,
+            'valor_total' => round($qtdBonus * $valorUnit, 2)
+        ];
     }
 
     /**
@@ -207,7 +328,7 @@ class PedidoModel
 
             $this->pdo->commit();
             return true;
-        } catch (\PDOException $e) {
+        } catch (PDOException $e) {
             $this->pdo->rollBack();
             // Lançar exceção se houver restrições de chave estrangeira (se o pedido já estiver em expedição)
             if ($e->getCode() === '23000') {

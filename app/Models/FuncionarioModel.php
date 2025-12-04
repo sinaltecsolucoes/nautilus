@@ -1,156 +1,94 @@
 <?php
 
-/**
- * CLASSE MODELO: FuncionarioModel
- * Local: app/Models/FuncionarioModel.php
- * Descrição: Gerencia as operações de CRUD e autenticação na tabela FUNCIONARIOS.
- */
+namespace App\Models;
 
-// Inclui a classe de conexão PDO
-require_once __DIR__ . '/Database.php';
-
-// Inclui o serviço de log para auditoria
-require_once ROOT_PATH . '/app/Services/AuditLoggerService.php';
+use App\Core\Database;
+use App\Services\AuditLoggerService;
+use PDO;
+use PDOException;
+use Exception;
 
 class FuncionarioModel
 {
-    private $pdo;
-    private $table = 'FUNCIONARIOS';
-    private $logger;
+    protected PDO $pdo;
+    protected AuditLoggerService $logger;
+    protected string $table = 'funcionarios';
 
     public function __construct()
     {
-        // Obtém a única instância da conexão PDO
         $this->pdo = Database::getInstance()->getConnection();
         $this->logger = new AuditLoggerService();
     }
 
-    /**
-     * Insere um novo funcionário no banco de dados.
-     * @param array $data Dados do funcionário (JÁ inclui o senha_hash).
-     * @param int   $userId ID do usuário que está executando a ação (auditoria).
-     * @return int|false O ID do novo funcionário ou false em caso de erro.
-     */
-    public function createFuncionario(array $data, int $userId = 0)
+    public function getFuncionarioByEmail(string $email)
+    {
+        $stmt = $this->pdo->prepare("SELECT * FROM {$this->table} WHERE email = :email");
+        $stmt->execute([':email' => $email]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    public function createFuncionario(array $data, int $userId = 0): int
     {
         $this->pdo->beginTransaction();
-
         try {
             $sql = "INSERT INTO {$this->table}
                 (nome_completo, nome_comum, email, senha_hash, tipo_cargo, situacao)
-                VALUES (:nome_completo, :nome_comum, :email, :senha_hash, :tipo_cargo, :situacao)";
+                VALUES (:nome, :apelido, :email, :senha, :cargo, :sit)";
 
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute([
-                ':nome_completo' => $data['nome_completo'],
-                ':nome_comum'    => $data['nome_comum'],
-                ':email'         => $data['email'],
-                ':senha_hash'    => $data['senha_hash'] ?? null,
-                ':tipo_cargo'    => $data['tipo_cargo'],
-                ':situacao'      => $data['situacao'] ?? 'Ativo',
+                ':nome'    => $data['nome_completo'],
+                ':apelido' => $data['nome_comum'],
+                ':email'   => $data['email'],
+                ':senha'   => $data['senha_hash'] ?? null,
+                ':cargo'   => $data['tipo_cargo'],
+                ':sit'     => $data['situacao'] ?? 'Ativo',
             ]);
 
-            $funcionarioId = $this->pdo->lastInsertId();
-
-            // LOG DE AUDITORIA (CREATE)
-            $this->logger->log(
-                'CREATE',
-                $this->table,
-                $funcionarioId,
-                null, // dados antigos
-                [
-                    'nome_completo' => $data['nome_completo'],
-                    'email'         => $data['email'],
-                    'tipo_cargo'    => $data['tipo_cargo']
-                ],
-                $userId
-            );
+            $id = (int)$this->pdo->lastInsertId();
+            $this->logger->log('CREATE', $this->table, $id, null, ['nome' => $data['nome_completo']], $userId);
 
             $this->pdo->commit();
-            return (int)$funcionarioId;
-        } catch (\PDOException $e) {
+            return $id;
+        } catch (PDOException $e) {
             $this->pdo->rollBack();
             throw $e;
         }
     }
 
-    /**
-     * Busca um funcionário pelo email para fins de login.
-     * @param string $email O email do usuário.
-     * @return array|false Dados do funcionário ou false se não encontrado.
-     */
-    public function getFuncionarioByEmail($email)
-    {
-        $sql = "SELECT id, nome_completo, email, senha_hash, tipo_cargo, situacao 
-                FROM {$this->table} 
-                WHERE email = :email";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':email' => $email]);
-
-        // Retorna a linha como um array associativo
-        return $stmt->fetch();
-    }
-
-    /**
-     * Busca dados dos funcionários no formato DataTables (Server-Side).
-     * @param array $params Parâmetros DataTables (start, length, search).
-     * @return array Dados paginados e totais.
-     */
     public function getForDataTable(array $params): array
     {
-        // Implementação conforme o arquivo original
-        $start = $params['start'];
-        $length = $params['length'];
-        $searchValue = $params['search'];
+        $start = (int)$params['start'];
+        $length = (int)$params['length'];
+        $search = $params['search'];
 
-        $bindParams = [];
         $where = "WHERE 1=1 ";
+        $binds = [];
 
-        // 1. CONDIÇÃO DA PESQUISA GLOBAL (SEARCH)
-        if (!empty($searchValue)) {
-            $where .= "AND (nome_completo LIKE :search1 OR nome_comum LIKE :search2 OR email LIKE :search3 OR tipo_cargo LIKE :search4) ";
-            $bindParams[':search1'] = "%" . $searchValue . "%";
-            $bindParams[':search2'] = "%" . $searchValue . "%";
-            $bindParams[':search3'] = "%" . $searchValue . "%";
-            $bindParams[':search4'] = "%" . $searchValue . "%";
+        if (!empty($search)) {
+            $where .= "AND (nome_completo LIKE :s OR nome_comum LIKE :s OR email LIKE :s OR tipo_cargo LIKE :s) ";
+            $binds[':s'] = "%{$search}%";
         }
 
-        // 2. Contagem Total de Registros
-        $sqlTotal = "SELECT COUNT(id) FROM {$this->table}";
-        $stmtTotal = $this->pdo->query($sqlTotal);
-        $totalRecords = $stmtTotal->fetchColumn();
+        $totalRecords = $this->pdo->query("SELECT COUNT(id) FROM {$this->table}")->fetchColumn();
 
+        $stmtF = $this->pdo->prepare("SELECT COUNT(id) FROM {$this->table} {$where}");
+        $stmtF->execute($binds);
+        $totalFiltered = $stmtF->fetchColumn();
 
-        // 3. Contagem de Registros Filtrados
-        $sqlFiltered = "SELECT COUNT(id) FROM {$this->table} " . $where;
-        $stmtFiltered = $this->pdo->prepare($sqlFiltered);
-        $stmtFiltered->execute($bindParams);
-        $totalFiltered = $stmtFiltered->fetchColumn();
+        $sql = "SELECT id, nome_completo, nome_comum, email, tipo_cargo, situacao 
+                FROM {$this->table} {$where} ORDER BY nome_completo ASC LIMIT :start, :length";
 
-
-        // 4. Query Principal com Limite (Dados)
-        $sqlData = "SELECT id, nome_completo, nome_comum, email, tipo_cargo, situacao FROM {$this->table} 
-                    {$where} 
-                    ORDER BY nome_completo ASC 
-                    LIMIT :start, :length";
-
-        $stmtData = $this->pdo->prepare($sqlData);
-
-        // Bindar os parâmetros nomeados
-        foreach ($bindParams as $key => $value) {
-            $stmtData->bindValue($key, $value);
-        }
-        $stmtData->bindValue(':start', (int)$start, PDO::PARAM_INT);
-        $stmtData->bindValue(':length', (int)$length, PDO::PARAM_INT);
-
-        $stmtData->execute();
-        $data = $stmtData->fetchAll(PDO::FETCH_ASSOC);
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($binds as $k => $v) $stmt->bindValue($k, $v);
+        $stmt->bindValue(':start', $start, PDO::PARAM_INT);
+        $stmt->bindValue(':length', $length, PDO::PARAM_INT);
+        $stmt->execute();
 
         return [
-            'total' => $totalRecords,
-            'totalFiltered' => $totalFiltered,
-            'data' => $data
+            'total' => (int)$totalRecords,
+            'totalFiltered' => (int)$totalFiltered,
+            'data' => $stmt->fetchAll(PDO::FETCH_ASSOC)
         ];
     }
 
@@ -171,7 +109,6 @@ class FuncionarioModel
 
     /**
      * Atualiza um funcionário existente.
-     * Agora suporta definir campos como NULL (para remover acesso).
      */
     public function updateFuncionario(int $id, array $data, int $userId): bool
     {
@@ -219,7 +156,7 @@ class FuncionarioModel
 
             $this->pdo->commit();
             return true;
-        } catch (\PDOException $e) {
+        } catch (PDOException $e) {
             $this->pdo->rollBack();
             throw $e;
         }
@@ -263,17 +200,16 @@ class FuncionarioModel
 
             $this->pdo->commit(); // Confirma a transação
             return $success;
-        } catch (\PDOException $e) {
+        } catch (PDOException $e) {
             $this->pdo->rollBack(); // Reverte a transação em caso de erro
             // O código '23000' indica restrição de chave estrangeira (FOREIGN KEY)
             if ($e->getCode() === '23000') {
                 // Lançamos uma exceção customizada para o Controller
-                throw new \Exception("Restrição de Chave Estrangeira: Este funcionário está vinculado a Entregas, Previsões ou Auditoria.");
+                throw new Exception("Restrição de Chave Estrangeira: Este funcionário está vinculado a Entregas, Previsões ou Auditoria.");
             }
             throw $e;
         }
     }
-
     /**
      * Busca funcionários por cargos específicos para uso em Select2 (Ex: Motoristas, Técnicos).
      * @param array $cargos Lista de cargos a buscar.

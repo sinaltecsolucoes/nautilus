@@ -1,18 +1,21 @@
 <?php
 
+namespace App\Services;
+
+use App\Core\Database;
+use PDO;
+use PDOException;
+
 /**
- * CLASSE DE SERVIÇO: AuditLoggerService
- * Local: app/Services/AuditLoggerService.php
- * Descrição: Centraliza a escrita de logs de auditoria no banco de dados.
+ * Class AuditLoggerService
+ * Registra logs de atividades críticas no sistema.
+ * @package App\Services
  */
-
-require_once ROOT_PATH . '/app/Models/Database.php';
-
 class AuditLoggerService
 {
 
-    private $pdo;
-    private $table = 'AUDITORIA';
+    private PDO $pdo;
+    private string $table = 'auditoria';
 
     public function __construct()
     {
@@ -39,17 +42,20 @@ class AuditLoggerService
         ?int $usuarioId = null
     ): bool {
         // 1. Obtém o ID do usuário (priorizando o valor passado ou a sessão)
-        if (session_status() == PHP_SESSION_NONE) {
-            session_start();
+        if ($usuarioId === null) {
+            if (session_status() == PHP_SESSION_NONE) {
+                session_start();
+            }
+
+            $usuarioId = $_SESSION['user_id'] ?? 1; // 1: ID de fallback para o Admin/Sistema
         }
-        $userId = $usuarioId ?? $_SESSION['user_id'] ?? 1; // 1: ID de fallback para o Admin/Sistema
 
         // 2. Obtém o IP do usuário
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'CLI'; // 'CLI' se for rodado da linha de comando
 
         // 3. Converte os arrays de dados para JSON (necessário para o tipo JSON no MySQL)
-        $jsonAntigo = $dadosAntigos ? json_encode($dadosAntigos) : null;
-        $jsonNovo = $dadosNovos ? json_encode($dadosNovos) : null;
+        $jsonAntigo = !empty($dadosAntigos) ? json_encode($dadosAntigos) : null;
+        $jsonNovo = !empty($dadosNovos) ? json_encode($dadosNovos) : null;
 
         $sql = "INSERT INTO {$this->table} (
                     usuario_id, tabela_afetada, registro_id, acao, 
@@ -62,7 +68,7 @@ class AuditLoggerService
         try {
             $stmt = $this->pdo->prepare($sql);
             $success = $stmt->execute([
-                ':user_id' => $userId,
+                ':user_id' => $usuarioId,
                 ':tabela' => $tabela,
                 ':registro_id' => $registroId,
                 ':acao' => $acao,
@@ -72,7 +78,7 @@ class AuditLoggerService
             ]);
 
             return $success;
-        } catch (\PDOException $e) {
+        } catch (PDOException $e) {
             // Em caso de falha na auditoria (ex: tabela AUDITORIA travada), 
             // registramos o erro no log do servidor, mas não impedimos a operação principal.
             error_log("ERRO FATAL DE AUDITORIA: " . $e->getMessage());
