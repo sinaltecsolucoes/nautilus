@@ -6,31 +6,51 @@
  * Descrição: Ponto de entrada para todas as requisições do NAUTILUS ERP.
  */
 
-// Define a raiz do projeto (nautilus/) para ser usada nas inclusões
+declare(strict_types=1);
+
+// Define a raiz do projeto para ser usada nas inclusões
 define('ROOT_PATH', dirname(__DIR__));
 
-// 1. Configurações Globais
-session_start(); // Inicia a sessão para controle de login/usuário
+// Carrega configuração
+$config = require ROOT_PATH . '/config/config.php';
 
-// Carrega o Autoloader Manual
+//Parâmetros de sessão segura
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path'     => '/',
+    'domain'   => $_SERVER['HTTP_HOST'],
+    'secure'   => isset($_SERVER['HTTPS']),
+    'httponly' => true,
+    'samesite' => 'Strict'
+]);
+
+// 1. Configurações Globais
+if (session_status() === PHP_SESSION_NONE) {
+    session_start(); // Inicia a sessão para controle de login/usuário
+}
+
+// Carrega o Autoloader Manual  
 require_once ROOT_PATH . '/app/Core/Autoload.php';
 
-// Carrega configurações
-//require_once ROOT_PATH . '/config/config.php';
+// Autoload
+require_once ROOT_PATH . '/app/Core/Autoload.php';
 
 // Carrega funções globais (Helpers)
 if (file_exists(ROOT_PATH . '/app/Helpers/functions.php')) {
     require_once ROOT_PATH . '/app/Helpers/functions.php';
 }
 
+// ===============================================================
+// Roteamento
+// ===============================================================
+
 // 2. Definição do Roteamento
 $route = $_GET['route'] ?? 'home';
 
 // Limpa barras e remove extensões .php
-$route = trim($route, '/');
-$route = str_replace('.php', '', $route);
+$route = strtolower(trim(str_replace('.php', '', $route), '/'));
 
-// Trata o prefixo 'public/' que o Apache pode adicionar
+// Trata o prefixo 'public/' que o servidor pode adicionar
 if (strpos($route, 'public/') === 0) {
     $route = substr($route, 7);
 }
@@ -42,11 +62,11 @@ if (empty($route)) {
 // Mapeamento das rotas para [NomeDaClasse, NomeDoMetodo]
 $routes = [
     // Autenticação
-    'login'     => ['AuthController', 'handleLogin'],
-    'logout'    => ['AuthController', 'logout'],
+    'login'     => ['AuthController', 'handleLogin', true],
+    'logout'    => ['AuthController', 'logout', true],
 
     // Interface Geral
-    'home'      => ['DashboardController', 'showDashboard'],
+    'home'      => ['DashboardController', 'showDashboard', true],
     'dashboard' => ['DashboardController', 'showDashboard'],
 
     // Permissões
@@ -133,35 +153,38 @@ $routes = [
     'relatorios/manutencao-pdf' => ['RelatorioController', 'gerarManutencaoPdf'],
 ];
 
-// 3. Rotas públicas (não exigem login)
-$public_routes = ['login', 'logout', 'home'];
-$is_public_route = in_array($route, $public_routes);
+// ======================================================
+// Middleware de Autenticação
+// ======================================================
+
 $is_logged_in = !empty($_SESSION['logged_in']);
+$routeConfig = $routes[$route] ?? null;
 
-// Se NÃO logado e rota protegida → vai para login
-if (!$is_logged_in && !$is_public_route) {
-    header('Location: ' . BASE_URL . '/login');
-    exit;
-}
+if ($routeConfig) {
+    [$controllerName, $methodName, $isPublic] = array_pad($routeConfig, 3, false);
 
-// Se JÁ logado e tenta acessar login ou home → vai para dashboard
-if ($is_logged_in && in_array($route, ['login', 'home'])) {
-    header('Location: ' . BASE_URL . '/dashboard');
-    exit;
-}
+    // Se rota protegida e usuário não logado → vai para login
+    if (!$isPublic && !$is_logged_in) {
+        header('Location: ' . $config['app']['base_url'] . '/login');
+        exit;
+    }
 
-// 4. Execução do Controller
-if (isset($routes[$route])) {
-    [$controllerName, $methodName] = $routes[$route];
+    // Se logado e tenta acessar login/home → vai para dashboard
+    if ($is_logged_in && in_array($route, ['login', 'home'])) {
+        header('Location: ' . $config['app']['base_url'] . '/dashboard');
+        exit;
+    }
 
-    // Namespace completo
+    // ======================================================
+    // Execução do Controller
+    // ======================================================
+
     $controllerClass = "App\\Controllers\\" . $controllerName;
 
     if (class_exists($controllerClass)) {
         $controller = new $controllerClass();
 
         if (method_exists($controller, $methodName)) {
-            // handleLogin decide GET ou POST
             $controller->$methodName();
         } else {
             http_response_code(404);
@@ -173,5 +196,5 @@ if (isset($routes[$route])) {
     }
 } else {
     http_response_code(404);
-    echo "Erro 404: Rota não encontrada. Acesse: " . BASE_URL . "/login";
+    echo "Erro 404: Rota '{$route}' não encontrada.";
 }

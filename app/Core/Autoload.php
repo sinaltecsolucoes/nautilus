@@ -2,41 +2,48 @@
 
 /**
  * Autoload PSR-4 Manual
- * * Este script diz ao PHP como localizar classes baseadas nos Namespaces.
+ * Local: app/Core/Autoload.php
+ * Suporta múltiplos namespaces e portabilidade.
+ * Este script diz ao PHP como localizar classes baseadas nos Namespaces.
  * Exemplo: A classe "App\Controllers\PedidoController" será procurada em "app/Controllers/PedidoController.php"
  */
 
-spl_autoload_register(function ($class) {
+spl_autoload_register(function (string  $class) {
 
-    // 1. Prefixo do namespace base do nosso projeto
-    $prefix = 'App\\';
+    // 1. Mapeamento de namespaces → diretórios base
+    $prefixes = [
+        'App\\' => __DIR__ . '/../', //classes principais do projeto
+        'Lib\\' => __DIR__ . '/../../lib/', //libs próprias
+    ];
 
-    // 2. Diretório base onde estão os arquivos desse namespace
-    // __DIR__ retorna o diretório atual (app/Core), então subimos um nível para chegar em 'app/'
-    // Ajuste conforme onde você salvar este arquivo. Se estiver em app/Core:
-    $base_dir = __DIR__ . '/../';
+    foreach ($prefixes as $prefix => $baseDir) {
+        $len = strlen($prefix);
 
-    // 3. Verifica se a classe usa o nosso prefixo (App\)
-    $len = strlen($prefix);
-    if (strncmp($prefix, $class, $len) !== 0) {
-        // Se a classe não começar com "App\", não é problema nosso. O autoloader ignora.
-        return;
-    }
+        //2. Verifica se a classe usa o nosso prefixo (App\), senao pula
+        if (strncmp($prefix, $class, $len) !== 0) {
+            // Se a classe não começar com "App\", não é problema nosso. O autoloader ignora.
+            continue;
+        }
 
-    // 4. Pega o nome relativo da classe (sem o prefixo App\)
-    $relative_class = substr($class, $len);
+        // 3. Pega o nome relativo da classe (sem o prefixo App\)
+        $relativeClass = substr($class, $len);
 
-    // 5. Mapeia o namespace para o caminho do arquivo:
-    // - Substitui o prefixo do namespace pelo diretório base
-    // - Substitui separadores de namespace (\) por separadores de diretório (/)
-    // - Adiciona .php no final
-    $file = $base_dir . str_replace('\\', '/', $relative_class) . '.php';
+        // 4. Mapeia o namespace para o caminho do arquivo:
+        // - Substitui o prefixo do namespace pelo diretório base
+        // - Substitui separadores de namespace (\) por separadores de diretório (/)
+        // - Adiciona .php no final
+        $file = $baseDir . str_replace('\\', DIRECTORY_SEPARATOR, $relativeClass) . '.php';
 
-    // 6. Se o arquivo existir, exige-o
-    if (file_exists($file)) {
-        require $file;
-    } else {
-        // Opcional: Log de erro se não encontrar (útil para debug)
-        // error_log("Autoload erro: Arquivo não encontrado para classe $class em: $file");
+        // 5. Se o arquivo existir, exige-o
+        if (file_exists($file)) {
+            require $file;
+            return;
+        } else {
+            // Em DEV: loga erro para debug
+            if (getenv('APP_ENV') === 'dev') {
+                error_log("Autoload erro: Arquivo não encontrado para classe $class em: $file");
+            }
+            return;
+        }
     }
 });

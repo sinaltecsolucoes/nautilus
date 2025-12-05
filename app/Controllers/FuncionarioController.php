@@ -1,23 +1,21 @@
 <?php
 
-/**
- * CLASSE CONTROLLER: FuncionarioController
- * Local: app/Controllers/FuncionarioController.php
- * Descrição: Gerencia o CRUD de Funcionários do sistema (Usuários).
- */
+namespace App\Controllers;
 
-require_once ROOT_PATH . '/app/Models/FuncionarioModel.php';
-require_once ROOT_PATH . '/app/Services/PermissaoService.php';
+use App\Core\BaseController;
+use App\Models\FuncionarioModel;
+use App\Services\PermissaoService;
 
-class FuncionarioController
+class FuncionarioController extends BaseController
 {
-    private $funcionarioModel;
+    private FuncionarioModel $funcionarioModel;
 
     public function __construct()
     {
         if (session_status() == PHP_SESSION_NONE) {
             session_start();
         }
+
         $this->funcionarioModel = new FuncionarioModel();
     }
 
@@ -39,17 +37,14 @@ class FuncionarioController
         }
 
         $data = [
-            'title' => 'Gestão de Funcionários',
+            'title'      => 'Gestão de Funcionários',
             'csrf_token' => $_SESSION['csrf_token'] ?? $this->generateCsrfToken(),
-            'cargos' => $this->funcionarioModel->getCargosOptions(), // Lista de cargos que o formulário precisará
+            'cargos'     => $this->funcionarioModel->getCargosOptions(), // Lista de cargos que o formulário precisará
             'pageScript' => 'funcionarios', // Novo script JS
         ];
 
         // RENDERIZAÇÃO
-        ob_start();
-        require_once ROOT_PATH . '/app/Views/funcionarios/index.php';
-        $content = ob_get_clean();
-        require_once ROOT_PATH . '/app/Views/layout.php';
+        $this->view('funcionarios/index', $data);
     }
 
     // =================================================================
@@ -61,52 +56,50 @@ class FuncionarioController
      */
     public function listarFuncionarios()
     {
-        // ... (Implementação do DataTables - Mantida)
         $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
         if (!PermissaoService::checarPermissao($cargo, 'Funcionarios', 'Ler')) {
             http_response_code(403);
-            echo json_encode(["error" => "Acesso negado."]);
-            exit;
+            $this->jsonResponse(['error' => 'Acesso negado.']);
+            return;
         }
 
-        $draw = filter_input(INPUT_POST, 'draw', FILTER_VALIDATE_INT) ?? 1;
-        $start = filter_input(INPUT_POST, 'start', FILTER_VALIDATE_INT) ?? 0;
-        $length = filter_input(INPUT_POST, 'length', FILTER_VALIDATE_INT) ?? 10;
-        $searchValue = filter_input(INPUT_POST, 'search', FILTER_DEFAULT, FILTER_REQUIRE_ARRAY)['value'] ?? '';
+        $draw   = $this->getInput('draw', FILTER_VALIDATE_INT) ?? 1;
+        $start  = $this->getInput('start', FILTER_VALIDATE_INT) ?? 0;
+        $length = $this->getInput('length', FILTER_VALIDATE_INT) ?? 10;
+        $search = $_POST['search']['value'] ?? '';
 
         try {
             $resultado = $this->funcionarioModel->getForDataTable([
-                'start' => $start,
+                'start'  => $start,
                 'length' => $length,
-                'search' => $searchValue
+                'search' => $search
             ]);
 
-            echo json_encode([
-                'draw' => $draw,
-                'recordsTotal' => $resultado['total'],
+            $this->jsonResponse([
+                'draw'            => $draw,
+                'recordsTotal'    => $resultado['total'],
                 'recordsFiltered' => $resultado['totalFiltered'],
-                'data' => $resultado['data']
+                'data'            => $resultado['data']
             ]);
         } catch (\Exception $e) {
             http_response_code(500);
             error_log("Erro em listarFuncionarios: " . $e->getMessage());
-            echo json_encode(['error' => 'Erro interno do servidor ao buscar dados.']);
+            $this->jsonResponse(['error' => 'Erro interno do servidor ao buscar dados.']);
         }
     }
 
-
     public function salvarFuncionario()
     {
-        $id = filter_input(INPUT_POST, 'funcionario_id', FILTER_VALIDATE_INT);
-        $acao = $id ? 'Alterar' : 'Criar';
-        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        $id     = $this->getInput('funcionario_id', FILTER_VALIDATE_INT);
+        $acao   = $id ? 'Alterar' : 'Criar';
+        $cargo  = $_SESSION['user_cargo'] ?? 'Visitante';
         $userId = $_SESSION['user_id'] ?? 0;
 
         // 1. Permissão
         if (!PermissaoService::checarPermissao($cargo, 'Funcionarios', $acao)) {
             http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Acesso negado.']);
-            exit;
+            $this->jsonResponse(['success' => false, 'message' => 'Acesso negado.']);
+            return;
         }
 
         $postLimpo = sanitize_input_array($_POST);
@@ -115,11 +108,11 @@ class FuncionarioController
         $temAcesso = isset($_POST['tem_acesso']); // Checkbox marcado?
 
         $data = [
-            'nome_completo' => $postLimpo [ 'funcionario_nome'],
-            'nome_comum'    => $postLimpo [ 'funcionario_apelido'],
-            'tipo_cargo'    => $postLimpo [ 'funcionario_cargo'],
-            'situacao'      => $postLimpo [ 'funcionario_situacao'],
-            
+            'nome_completo' => $postLimpo['funcionario_nome'],
+            'nome_comum'    => $postLimpo['funcionario_apelido'],
+            'tipo_cargo'    => $postLimpo['funcionario_cargo'],
+            'situacao'      => $postLimpo['funcionario_situacao'],
+
             // Inicializa Login como NULL por padrão
             'email'         => null,
             'senha_hash'    => null,
@@ -136,8 +129,8 @@ class FuncionarioController
             $emailInput = $postLimpo['funcionario_email'];
 
             if (empty($emailInput)) {
-                echo json_encode(['success' => false, 'message' => 'Email é obrigatório para usuários com acesso.']);
-                exit;
+                $this->jsonResponse(['success' => false, 'message' => 'Email é obrigatório para usuários com acesso.']);
+                return;
             }
             $data['email'] = $emailInput;
 
@@ -146,8 +139,8 @@ class FuncionarioController
 
             // Se for NOVO e tem acesso, senha é obrigatória
             if (!$id && empty($senhaPura)) {
-                echo json_encode(['success' => false, 'message' => 'Senha é obrigatória para novos usuários.']);
-                exit;
+                $this->jsonResponse(['success' => false, 'message' => 'Senha é obrigatória para novos usuários.']);
+                return;
             }
 
             // Se digitou senha (Novo ou Edição), criptografa e atualiza
@@ -173,51 +166,44 @@ class FuncionarioController
                 $message = 'Funcionário cadastrado com sucesso!';
             }
 
-            echo json_encode(['success' => true, 'message' => $message, 'func_id' => $newId]);
+            $this->jsonResponse(['success' => true, 'message' => $message, 'func_id' => $newId]);
         } catch (\PDOException $e) {
-            if ($e->getCode() === '23000') {
-                $message = "Erro: O email informado já está em uso.";
-            } else {
-                error_log("DB Error: " . $e->getMessage());
-                $message = "Erro interno ao salvar dados.";
-            }
-            echo json_encode(['success' => false, 'message' => $message]);
-        } catch (\Exception $e) {
-            error_log("General Error: " . $e->getMessage());
-            echo json_encode(['success' => false, 'message' => 'Erro inesperado: ' . $e->getMessage()]);
+            $message = $e->getCode() === '23000'
+                ? "Erro: O email informado já está em uso."
+                : "Erro interno ao salvar dados.";
+            error_log("DB Error: " . $e->getMessage());
+            $this->jsonResponse(['success' => false, 'message' => 'Erro inesperado: ' . $e->getMessage()]);
         }
     }
-
 
     /**
      * Busca dados de um funcionário para pré-preenchimento (GET).
      */
     public function getFuncionario()
     {
-        $id = filter_input(INPUT_POST, 'funcionario_id', FILTER_VALIDATE_INT);
-        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        $id     = $this->getInput('funcionario_id', FILTER_VALIDATE_INT);
+        $cargo  = $_SESSION['user_cargo'] ?? 'Visitante';
 
         if (!PermissaoService::checarPermissao($cargo, 'Funcionarios', 'Ler')) {
             http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Acesso negado.']);
-            exit;
+            $this->jsonResponse(['success' => false, 'message' => 'Acesso negado.']);
+            return;
         }
 
         if (!$id) {
-            echo json_encode(['success' => false, 'message' => 'ID inválido.']);
-            exit;
+            $this->jsonResponse(['success' => false, 'message' => 'ID inválido.']);
+            return;
         }
 
         $dados = $this->funcionarioModel->find($id);
 
         if ($dados) {
             // Não devolve dados sensíveis (o Model já exclui a senha)
-            echo json_encode(['success' => true, 'data' => $dados]);
+            $this->jsonResponse(['success' => true, 'data' => $dados]);
         } else {
-            echo json_encode(['success' => false, 'message' => 'Funcionário não encontrado.']);
+            $this->jsonResponse(['success' => false, 'message' => 'Funcionário não encontrado.']);
         }
     }
-
 
     /**
      * Inativa (Soft Delete) um funcionário (POST).
@@ -225,32 +211,32 @@ class FuncionarioController
      */
     public function deleteFuncionario()
     {
-        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        $cargo  = $_SESSION['user_cargo'] ?? 'Visitante';
         $userId = $_SESSION['user_id'] ?? 0; // ID DO USUÁRIO LOGADO para Auditoria
-        $id = filter_input(INPUT_POST, 'funcionario_id', FILTER_VALIDATE_INT);
+        $id     = $this->getInput('funcionario_id', FILTER_VALIDATE_INT);
 
         if (!PermissaoService::checarPermissao($cargo, 'Funcionarios', 'Deletar')) {
             http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Acesso negado para Inativar.']);
-            exit;
+            $this->jsonResponse(['success' => false, 'message' => 'Acesso negado para Inativar.']);
+            return;
         }
 
         if (!$id) {
-            echo json_encode(['success' => false, 'message' => 'ID inválido para inativação.']);
-            exit;
+            $this->jsonResponse(['success' => false, 'message' => 'ID inválido para inativação.']);
+            return;
         }
 
-        // Regra de Ouro: Impedir que o próprio Admin se delete/inative
+        // Impedir que o próprio Admin se delete/inative
         if ($id == $userId) {
-            echo json_encode(['success' => false, 'message' => 'Você não pode inativar sua própria conta.']);
-            exit;
+            $this->jsonResponse(['success' => false, 'message' => 'Você não pode inativar sua própria conta.']);
+            return;
         }
 
         try {
             if ($this->funcionarioModel->inactivate($id, $userId)) { // Passa o userId
-                echo json_encode(['success' => true, 'message' => 'Funcionário inativado com sucesso!']);
+                $this->jsonResponse(['success' => true, 'message' => 'Funcionário inativado com sucesso!']);
             } else {
-                echo json_encode(['success' => false, 'message' => 'Falha ao inativar. Funcionário não encontrado ou já inativo.']);
+                $this->jsonResponse(['success' => false, 'message' => 'Falha ao inativar. Funcionário não encontrado ou já inativo.']);
             }
         } catch (\Exception $e) {
             // Captura a exceção de Restrição de Chave Estrangeira do Model
@@ -260,19 +246,17 @@ class FuncionarioController
                 error_log("Erro ao inativar funcionário: " . $e->getMessage());
                 $message = "Erro interno ao processar a inativação.";
             }
-            echo json_encode(['success' => false, 'message' => $message]);
+            $this->jsonResponse(['success' => false, 'message' => $message]);
         }
     }
-
 
     // =================================================================
     // AUXILIARES
     // =================================================================
-
-    private function generateCsrfToken()
+    private function generateCsrfToken(): string
     {
         // Implementa geração de token e salvar em $_SESSION
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-        return $_SESSION['csrf_token'];
+        return $_SESSION['csrf_token']; 
     }
 }

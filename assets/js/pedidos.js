@@ -313,7 +313,7 @@ document.addEventListener('app:config-ready', () => {
     }
 
     // ------------------------------------------------------------------
-    // 3.4 INICIALIZAÇÃO FINAL
+    // 3.4 INICIALIZAÇÃO FINAL 
     // ------------------------------------------------------------------
     initMasks();
     initSelect2();

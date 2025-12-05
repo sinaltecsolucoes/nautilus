@@ -2,253 +2,296 @@
  * SCRIPT JAVASCRIPT: Lógica do Módulo de Funcionários
  * Local: assets/js/funcionarios.js
  * Descrição: Gerencia o CRUD de funcionários (usuários) via AJAX e DataTables com SweetAlert2.
+ * Dependências: jQuery, DataTables, SweetAlert2 (app.js), config.js (APP_CONFIG).
+ * 
+ * Padrão: Constants > Helpers > Core functions > Init
  */
 
-document.addEventListener('DOMContentLoaded', function () {
-    const rootData = document.getElementById('funcionario-data');
-    if (!rootData) return;
+// =============================================================================
+// 1. CONSTANTES GLOBAIS (imutáveis, maiúsculas)
+// =============================================================================
+const SELECTORS = {
+    ROOT: '#funcionario-data',
+    MODAL: '#modal-funcionario',
+    FORM: '#form-funcionario',
+    ID: '#funcionario-id',
+    TITULO_MODAL: '#modal-funcionario-label',
+    TABELA: '#tabela-funcionarios',
+    TEM_ACESSO: '#tem_acesso',
+    AREA_LOGIN: '#area-login',
+    EMAIL: '#funcionario-email',
+    SENHA: '#funcionario-senha',
+    CONFIRMAR_SENHA: '#funcionario-confirmar-senha',
+    SENHA_HELP: '#senha-help',
+    NOME: '#funcionario-nome',
+    APELIDO: '#funcionario-apelido',
+    CARGO: '#funcionario-cargo',
+    SITUACAO: '#funcionario-situacao',
+    BTN_SALVAR: '#btn-salvar-funcionario',
+    BTN_ADD: '#btn-adicionar-funcionario'
+};
 
-    const BASE_URL = rootData.dataset.baseUrl;
-    const CSRF_TOKEN = rootData.dataset.csrfToken;
-    const LOGGED_USER_ID = parseInt(rootData.dataset.loggedInUserId) || 0;
+// =============================================================================
+// 2. VARIÁVEIS GLOBAIS (mutáveis, let para reatribuição se necessário)
+// =============================================================================
 
-    const $modal = $('#modal-funcionario');
-    const $form = $('#form-funcionario');
-    const $idInput = $('#funcionario-id');
-    const $senhaInput = $('#funcionario-senha');
-    const $confirmarSenhaInput = $('#funcionario-confirmar-senha');
-    const $btnSalvar = $('#btn-salvar-funcionario');
+let table; // Instância do DataTable
 
-    // Lógica do Checkbox de Acesso
-    $('#tem_acesso').on('change', function () {
-        const isChecked = $(this).is(':checked');
-        const isEdit = $('#funcionario-id').val() !== '';
+// =============================================================================
+// 3. EVENT LISTENERS E INICIALIZAÇÃO (executado no DOMContentLoaded)
+// =============================================================================
 
-        if (isChecked) {
-            $('#area-login').slideDown();
-            $('#funcionario-email').prop('required', true);
-
-            // Senha obrigatória apenas se for NOVO usuário com acesso
-            if (!isEdit) {
-                $('#funcionario-senha').prop('required', true);
-                $('#funcionario-confirmar-senha').prop('required', true);
-                $('#senha-help').text('Senha obrigatória para novos usuários com acesso.');
-            } else {
-                // Na edição, senha é opcional (só se quiser trocar)
-                $('#funcionario-senha').prop('required', false);
-                $('#funcionario-confirmar-senha').prop('required', false);
-                $('#senha-help').text('Preencha apenas se quiser alterar a senha atual.');
-            }
-        } else {
-            $('#area-login').slideUp();
-            $('#funcionario-email').prop('required', false).val('');
-            $('#funcionario-senha').prop('required', false).val('');
-            $('#funcionario-confirmar-senha').prop('required', false).val('');
-        }
-    });
-
-    // Função de feedback original (substituída acima, mas mantida no JS do usuário)
-    // Se a função showFeedback estiver em outro arquivo (layout.php), podemos removê-la daqui.
-    // Vamos assumir que ela precisa ser adaptada:
-    window.showFeedback = function (message, type) {
-        showSwalFeedback(message, type);
+document.addEventListener('app:config-ready', () => {
+    if (!window.APP_CONFIG) {
+        console.error('APP_CONFIG não carregado. Inclua config.js antes.')
+        return;
     }
 
-    // ===============================================================
-    // 1. Inicialização do DataTables
-    // ===============================================================
-    const table = $('#tabela-funcionarios').DataTable({
-        "serverSide": true,
-        "processing": true,
-        "ajax": {
-            "url": BASE_URL + "/usuarios/listar",
-            "type": "POST",
-            "data": { csrf_token: CSRF_TOKEN }
-        },
-        "columns": [
-            { "data": "nome_completo" },
-            { "data": "nome_comum" },
-            { "data": "email" },
-            { "data": "tipo_cargo" },
-            {
-                "data": "situacao",
-                "render": function (data) {
-                    // Renderiza a Situação com Badge (Bootstrap)
-                    const badgeClass = data === 'Ativo' ? 'bg-success' : 'bg-danger';
-                    return `<span class="badge ${badgeClass}">${data}</span>`;
-                }
-            },
-            {
-                "data": "id",
-                "orderable": false,
-                "render": function (data, type, row) {
-                    const isSelf = parseInt(data) === LOGGED_USER_ID;
-                    const isDisabled = isSelf ? 'disabled' : '';
-                    const title = isSelf ? 'Você não pode inativar sua própria conta' : '';
+    const { BASE_URL, CSRF_TOKEN } = window.APP_CONFIG;
 
-                    let actions = `<button class="btn btn-warning btn-sm btn-editar me-2" data-id="${data}" title="Editar Funcionário">
-                                        <i class="fas fa-edit"></i>
-                                    </button>`;
+    // ==================================================================
+    // 3.1 DEFINIÇÃO DAS ROTAS
+    // ==================================================================
 
-                    actions += `<button class="btn btn-danger btn-sm btn-inativar" data-id="${data}" data-nome="${row.nome_completo}" ${isDisabled} title="${title}">
-                                    <i class="fas fa-user-slash"></i>
-                                </button>`;
-                    return actions;
-                }
-            }
-        ],
-        "language": window.DataTablesPtBr
-    });
+    const ROUTES = {
+        LISTAR: `${BASE_URL}/usuarios/listar`,
+        GET: `${BASE_URL}/usuarios/get`,
+        SALVAR: `${BASE_URL}/usuarios/salvar`,
+        DELETAR: `${BASE_URL}/usuarios/deletar`
+    };
 
+    // =============================================================================
+    // 3.2 FUNÇÕES AUXILIARES (pequenas, reutilizáveis e puras quando possível)
+    // =============================================================================
+    function isEditMode() {
+        return $(SELECTORS.ID).val() !== '';
+    }
 
-    // ===============================================================
-    // 2. Eventos do Formulário (CREATE / UPDATE)
-    // ===============================================================
+    function resetModal(isCreate = true) {
+        $(SELECTORS.FORM)[0].reset();
+        $(SELECTORS.ID).val('');
+        $(SELECTORS.TEM_ACESSO).prop('checked', false).trigger('change');
+        $(SELECTORS.TITULO_MODAL).text(isCreate ? 'Adicionar Novo Funcionário' : 'Editar Funcionário');
+        $(SELECTORS.BTN_SALVAR).html(isCreate
+            ? '<i class="fas fa-save me-2"></i> Salvar Funcionário'
+            : '<i class="fas fa-edit me-2"></i> Atualizar Funcionário'
+        );
+    }
 
-    // Abrir Modal (Adicionar)
-    $('#btn-adicionar-funcionario').on('click', function () {
-        $idInput.val('');
-        $form[0].reset();
-        $('#modal-funcionario-label').text('Adicionar Novo Funcionário');
-        /* $senhaInput.prop('required', true).closest('.col-md-6').show();
-         $confirmarSenhaInput.prop('required', true).closest('.col-md-6').show();*/
+    function toggleAcessoArea() {
+        const isChecked = $(SELECTORS.TEM_ACESSO).is(':checked');
+        const edit = isEditMode();
 
-        // Apenas garantimos que o checkbox de acesso comece desmarcado.
-        $('#tem_acesso').prop('checked', false).trigger('change');
-        $btnSalvar.html('<i class="fas fa-save me-2"></i> Salvar Funcionário');
-        //$('#tem_acesso').prop('checked', false).trigger('change'); // Reseta para fechado
-    });
+        if (isChecked) {
+            $(SELECTORS.AREA_LOGIN).slideDown();
+            $(SELECTORS.EMAIL).prop('required', true);
 
-    // Abrir Modal (Editar)
-    $('#tabela-funcionarios').on('click', '.btn-editar', function () {
-        const id = $(this).data('id');
-        $idInput.val(id);
-        $('#modal-funcionario-label').text('Editar Funcionário ID: ' + id);
-
-        // Esconde e torna a senha opcional ao editar
-        $senhaInput.prop('required', false).val('').closest('.col-md-6').show();
-        $confirmarSenhaInput.prop('required', false).val('').closest('.col-md-6').show();
-        $btnSalvar.html('<i class="fas fa-edit me-2"></i> Atualizar Funcionário');
-
-        // Busca dados para pré-preenchimento
-        $.ajax({
-            url: BASE_URL + '/usuarios/get',
-            type: 'POST',
-            data: { funcionario_id: id, csrf_token: CSRF_TOKEN },
-            dataType: 'json'
-        }).done(function (response) {
-            if (response.success && response.data) {
-                const data = response.data;
-                $('#funcionario-nome').val(data.nome_completo);
-                $('#funcionario-apelido').val(data.nome_comum);
-                $('#funcionario-email').val(data.email);
-                $('#funcionario-cargo').val(data.tipo_cargo);
-                $('#funcionario-situacao').val(data.situacao);
-
-                if (data.email) {
-                    $('#tem_acesso').prop('checked', true).trigger('change');
-                    $('#funcionario-email').val(data.email);
-                } else {
-                    $('#tem_acesso').prop('checked', false).trigger('change');
-                }
-                $modal.modal('show');
+            if (!edit) {
+                $(SELECTORS.SENHA).prop('required', true);
+                $(SELECTORS.CONFIRMAR_SENHA).prop('required', true);
+                $(SELECTORS.SENHA_HELP).text('Senha obrigatória para novos usuários com acesso.');
             } else {
-                msgErro(msg);
+                $(SELECTORS.SENHA).prop('required', false);
+                $(SELECTORS.CONFIRMAR_SENHA).prop('required', false);
+                $(SELECTORS.SENHA_HELP).text('Preencha apenas se quiser alterar a senha atual.');
             }
-        }).fail(function () {
-            msgErro(msg);
-        });
-    });
+        } else {
+            $(SELECTORS.AREA_LOGIN).slideUp();
+            $(SELECTORS.EMAIL).prop('required', false).val('');
+            $(SELECTORS.SENHA).prop('required', false).val('');
+            $(SELECTORS.CONFIRMAR_SENHA).prop('required', false).val('');
+            $(SELECTORS.SENHA_HELP).text('');
+        }
+    }
 
-    // Submissão do Formulário (Salvar/Atualizar)
-    $form.on('submit', function (e) {
+    function validateSenha() {
+        const temAcesso = $(SELECTORS.TEM_ACESSO).is(':checked');
+        if (!temAcesso) return { ok: true };
+
+        const senha = $(SELECTORS.SENHA).val();
+        const confirmar = $(SELECTORS.CONFIRMAR_SENHA).val();
+        const isNew = !isEditMode();
+
+        if (senha !== confirmar) {
+            return { ok: false, message: 'As senhas não coincidem.' };
+        }
+        if (isNew && senha.length < 6) {
+            return { ok: false, message: 'A senha deve ter pelo menos 6 caracteres.' };
+        }
+        if (!isNew && senha.length > 0 && senha.length < 6) {
+            return { ok: false, message: 'A nova senha deve ter pelo menos 6 caracteres.' };
+        }
+        return { ok: true };
+    }
+
+    // =============================================================================
+    // 3.3 FUNÇÕES PRINCIPAIS (lógica core, async para HTTP)
+    // =============================================================================
+
+    function initDataTable() {
+        table = $(SELECTORS.TABELA).DataTable({
+            serverSide: true,
+            processing: true,
+            ajax: {
+                url: ROUTES.LISTAR,
+                type: 'POST',
+                data: { csrf_token: CSRF_TOKEN }
+            },
+            columns: [
+                { data: 'nome_completo' },
+                { data: 'nome_comum' },
+                { data: 'email' },
+                { data: 'tipo_cargo' },
+                {
+                    data: 'situacao',
+                    render: function (data) {
+                        const badgeClass = data === 'Ativo' ? 'bg-success' : 'bg-danger';
+                        return `<span class="badge ${badgeClass}">${data}</span>`;
+                    }
+                },
+                {
+                    data: 'id',
+                    orderable: false,
+                    render: function (data, type, row) {
+                        const isSelf = parseInt(data) === (window.APP_CONFIG?.LOGGED_USER_ID || 0);
+                        const disabled = isSelf ? 'disabled' : '';
+                        const title = isSelf ? 'Você não pode inativar sua própria conta' : '';
+                        return `
+                            <button class="btn btn-warning btn-sm btn-editar me-2" data-id="${data}" title="Editar">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-danger btn-sm btn-inativar" data-id="${data}" data-nome="${row.nome_completo}" ${disabled} title="${title}">
+                                <i class="fas fa-user-slash"></i>
+                            </button>
+                        `;
+                    }
+                }
+            ],
+            language: window.DataTablesPtBr
+        });
+    }
+
+    async function loadFuncionario(id) {
+        try {
+            const response = await apiPost(ROUTES.GET, { funcionario_id: id, csrf_token: CSRF_TOKEN });
+            if (response.success && response.data) {
+                const d = response.data;
+                $(SELECTORS.ID).val(d.id);
+                $(SELECTORS.NOME).val(d.nome_completo);
+                $(SELECTORS.APELIDO).val(d.nome_comum);
+                $(SELECTORS.EMAIL).val(d.email);
+                $(SELECTORS.CARGO).val(d.tipo_cargo);
+                $(SELECTORS.SITUACAO).val(d.situacao);
+
+                if (d.email) {
+                    $(SELECTORS.TEM_ACESSO).prop('checked', true);
+                } else {
+                    $(SELECTORS.TEM_ACESSO).prop('checked', false);
+                }
+                toggleAcessoArea();
+
+                $(SELECTORS.TITULO_MODAL).text(`Editar Funcionário ID: ${id}`);
+                $(SELECTORS.BTN_SALVAR).html('<i class="fas fa-edit me-2"></i> Atualizar Funcionário');
+                $(SELECTORS.MODAL).modal('show');
+            } else {
+                msgErro(response.message || 'Erro ao carregar dados.');
+            }
+        } catch (error) {
+            console.error(error);
+            msgErro('Erro de comunicação com o servidor.');
+        }
+    }
+
+    async function submitForm(e) {
         e.preventDefault();
 
-        const senhaVal = $senhaInput.val();
-        const confSenhaVal = $confirmarSenhaInput.val();
-        const temAcesso = $('#tem_acesso').is(':checked');
-
-        // VALIDAÇÃO DE SENHA (Apenas se o checkbox de acesso estiver marcado)
-        if (temAcesso) {
-            if (senhaVal !== confSenhaVal) {
-                msgErro(msg);
-                return;
-            }
-
-            // Se for novo cadastro E marcou acesso, senha é obrigatória e deve ter min 6 chars
-            const isNew = !$idInput.val();
-            if (isNew && senhaVal.length < 6) {
-                msgErro(msg);
-                return;
-            }
-
-            // Se for edição e o usuário digitou algo na senha, valida tamanho
-            if (!isNew && senhaVal.length > 0 && senhaVal.length < 6) {
-                msgErro(msg);
-                return;
-            }
+        const senhaValidation = validateSenha();
+        if (!senhaValidation.ok) {
+            msgErro(senhaValidation.message);
+            return;
         }
 
-        // Bloqueia o botão para evitar cliques duplicados
-        $btnSalvar.prop('disabled', true);
+        const $btn = $(SELECTORS.BTN_SALVAR);
+        const original = $btn.html();
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Salvando...');
 
-        $.ajax({
-            url: BASE_URL + '/usuarios/salvar',
-            type: 'POST',
-            data: $form.serialize(),
-            dataType: 'json',
-        }).done(function (response) {
-            $btnSalvar.prop('disabled', false);
+        try {
+            // Envia como application/x-www-form-urlencoded (serialize), mantendo seu backend
+            const formData = new FormData($(SELECTORS.FORM)[0]);
+            formData.append('csrf_token', CSRF_TOKEN);
+
+            const response = await apiPost(ROUTES.SALVAR, formData, true);
+
+            if (response.success) {
+                $(SELECTORS.MODAL).modal('hide');
+                table.ajax.reload(null, false);
+                msgSucesso(response.message);
+            } else {
+                msgErro(response.message || 'Falha ao salvar.');
+            }
+        } catch (error) {
+            console.error(error);
+            msgErro('Erro de comunicação ao salvar.');
+        } finally {
+            $btn.prop('disabled', false).html(original);
+        }
+    }
+
+    async function inativarFuncionario(id, nome) {
+        const result = await confirmarExclusao('Tem certeza?', `Você irá INATIVAR o funcionário <b>${nome}</b>.`);
+        if (!result.isConfirmed) return;
+
+        try {
+            const response = await apiPost(ROUTES.DELETAR, { funcionario_id: id, csrf_token: CSRF_TOKEN });
             if (response.success) {
                 table.ajax.reload(null, false);
-                $modal.modal('hide');
-                msgSucesso(msg);
+                msgSucesso(response.message);
             } else {
-                msgErro(msg);
+                msgErro(response.message || 'Falha ao inativar.');
             }
-        }).fail(function () {
-            $btnSalvar.prop('disabled', false);
-            msgErro(msg);
-        });
+        } catch (error) {
+            console.error(error);
+            msgErro('Erro de comunicação para inativação.');
+        }
+    }
+
+    // =============================================================================
+    // 3.4 INICIALIZAÇÃO FINAL
+    // =============================================================================
+
+    // Garantir existência do root na página
+    if (!document.querySelector(SELECTORS.ROOT)) {
+        return;
+    }
+
+    // Eventos
+    $(SELECTORS.TEM_ACESSO).on('change', toggleAcessoArea);
+
+    $(SELECTORS.BTN_ADD).on('click', function () {
+        resetModal(true);
+        $(SELECTORS.MODAL).modal('show');
     });
 
-    // ===============================================================
-    // 3. Ação de Inativar (SOFT DELETE) - COM SWEETALERT2
-    // ===============================================================
-    $('#tabela-funcionarios').on('click', '.btn-inativar', function () {
-        const $this = $(this);
-        if ($this.is(':disabled')) return;
+    $(SELECTORS.FORM).on('submit', submitForm);
 
-        const id = $this.data('id');
-        const nome = $this.data('nome');
-
-        confirmarExclusao('Tem certeza?', `Você irá INATIVAR o funcionário **${nome}**.`)
-            .then((result) => {
-                if (result.isConfirmed) {
-                    $.ajax({
-                        url: BASE_URL + '/usuarios/deletar',
-                        type: 'POST',
-                        data: { funcionario_id: id, csrf_token: CSRF_TOKEN },
-                        dataType: 'json',
-                    }).done(function (response) {
-                        if (response.success) {
-                            table.ajax.reload(null, false);
-                            msgSucesso(response.message);
-                        } else {
-                            msgErro(response.message);
-                        }
-                    }).fail(function () {
-                        msgErro('Erro de comunicação para inativação.');
-                    });
-                }
-            });
+    $(SELECTORS.TABELA).on('click', '.btn-editar', function () {
+        const id = $(this).data('id');
+        resetModal(false); // prepara modal para edição
+        loadFuncionario(id);
     });
 
-    // Garante que o ID e Senha sejam limpos ao fechar o modal
-    $modal.on('hidden.bs.modal', function () {
-        $idInput.val('');
-        $form[0].reset();
-        $senhaInput.prop('required', false).val('');
-        $confirmarSenhaInput.prop('required', false).val('');
+    $(SELECTORS.TABELA).on('click', '.btn-inativar', function () {
+        const $btn = $(this);
+        if ($btn.is(':disabled')) return;
+        inativarFuncionario($btn.data('id'), $btn.data('nome'));
     });
+
+    $(SELECTORS.MODAL).on('hidden.bs.modal', function () {
+        resetModal(true);
+    });
+
+    // Inicializa tabela
+    if ($(SELECTORS.TABELA).length > 0) {
+        initDataTable();
+    }
 });

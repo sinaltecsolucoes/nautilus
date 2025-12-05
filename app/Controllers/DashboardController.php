@@ -1,29 +1,35 @@
 <?php
 
+namespace App\Controllers;
+
+use App\Core\BaseController;
+
 /**
  * CLASSE CONTROLLER: DashboardController
  * Local: app/Controllers/DashboardController.php
  * Descrição: Gerencia a página inicial (Dashboard) do sistema.
  */
 
-// Inclui o FuncionarioModel para qualquer dado específico do usuário que seja necessário
-require_once ROOT_PATH . '/app/Models/FuncionarioModel.php';
-
-class DashboardController
+/**
+ * Exibe o dashboard principal
+ */
+class DashboardController extends BaseController
 {
-
     // Método principal para exibir o dashboard
     public function showDashboard()
     {
-        // Garante que a sessão está iniciada (já é feito no Roteador, mas bom para garantir)
+        // Garante que a sessão está iniciada 
         if (session_status() == PHP_SESSION_NONE) {
             session_start();
         }
 
-        // Verifica se o usuário está logado (Embora o Roteador já faça isso, é uma camada de segurança)
+        // Carrega config
+        $config = require ROOT_PATH . '/config/config.php';
+
+        // Verifica se o usuário está logado 
         if (!($_SESSION['logged_in'] ?? false)) {
-            // Se não estiver logado, redireciona para o login (embora o Roteador deva pegar isso antes)
-            header('Location: ' . BASE_URL . '/login');
+            // Se não estiver logado, redireciona para o login
+            header('Location: ' . $config['app']['base_url'] . '/login');
             exit;
         }
 
@@ -32,24 +38,11 @@ class DashboardController
 
         // Dados que serão passados para a View
         $data = [
-            'title' => 'Dashboard Principal',
+            'title'           => 'Painel Principal',
             'welcome_message' => "Bem-vindo(a), {$user_nome} ({$user_cargo})!"
-            // Futuramente: dados estatísticos, resumo de pedidos, status da frota.
         ];
 
-        // 1. Inicia o buffer de saída. Tudo que for 'echo' a partir de agora será capturado.
-        ob_start();
-
-        // 2. Carrega a View específica (o conteúdo HTML puro)
-        require_once ROOT_PATH . '/app/Views/dashboard.php';
-
-        // 3. Obtém o conteúdo da View e limpa o buffer
-        $content = ob_get_clean();
-
-        // 4. Carrega o Layout Central, passando o conteúdo da View e o título
-        // Esta é a magia da injeção de View no Layout Central!
-        require_once ROOT_PATH . '/app/Views/layout.php';
+        // Renderiza a view dentro do layout
+        $this->view('dashboard', $data);
     }
 }
-
-// Nota: Precisamos adicionar este Controller ao roteador index.php (próxima seção)

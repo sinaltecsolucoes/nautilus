@@ -7,15 +7,16 @@
  * Variáveis: $data['title'], $data['csrf_token'], $data['cargos']
  */
 $csrf_token = $data['csrf_token'] ?? '';
-$cargos = $data['cargos'] ?? [];
+$cargos     = $data['cargos'] ?? [];
 ?>
 
 <h1 class="h3 mb-4 text-gray-800"><?php echo htmlspecialchars($data['title']); ?></h1>
 
 <div id="funcionario-data"
-    data-base-url="<?php echo BASE_URL; ?>"
+    data-base-url="<?php echo $config['app']['base_url']; ?>"
     data-csrf-token="<?php echo htmlspecialchars($csrf_token); ?>"
-    data-logged-in-user-id="<?php echo $_SESSION['user_id'] ?? 0; ?>" style="display: none;">
+    data-logged-in-user-id="<?php echo $_SESSION['user_id'] ?? 0; ?>"
+    style="display: none;">
 </div>
 
 <div class="card shadow mb-4">
@@ -25,6 +26,7 @@ $cargos = $data['cargos'] ?? [];
             <i class="fas fa-user-plus me-1"></i> Adicionar Funcionário
         </button>
     </div>
+
     <div class="card-body">
         <div class="table-responsive">
             <table class="table table-bordered table-hover" id="tabela-funcionarios" width="100%" cellspacing="0">
@@ -35,7 +37,7 @@ $cargos = $data['cargos'] ?? [];
                         <th>Email (Login)</th>
                         <th>Cargo</th>
                         <th>Situação</th>
-                        <th>Ações</th>
+                        <th style="width: 120px;">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -45,6 +47,7 @@ $cargos = $data['cargos'] ?? [];
     </div>
 </div>
 
+<!-- Modal -->
 <div class="modal fade" id="modal-funcionario" tabindex="-1" role="dialog" aria-labelledby="modal-funcionario-label" aria-hidden="true">
     <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content">

@@ -1,12 +1,20 @@
+
 # .htaccess
 # Local: C:\xampp\htdocs\nautilus\
 
+# Bloqueia a listagem de pastas (Segurança: evita que vejam seus arquivos soltos)
+Options -Indexes
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteBase /nautilus/public/
+    RewriteBase /nautilus/
 
-    # Redireciona tudo que não for arquivo real para /public/
+    # 1. Se acessar a raiz (apenas "/nautilus/"), 
+    # força a ida para public/index.php internamente.
+    RewriteRule ^$ public/index.php [L]
+
+    # 2. Se não for arquivo ou diretório real, manda para public/index.php
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteRule ^(.*)$ public/$1 [L,QSA]
+    RewriteRule ^(.*)$ public/index.php?route=$1 [L,QSA]
 </IfModule>

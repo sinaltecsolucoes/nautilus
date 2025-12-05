@@ -16,13 +16,13 @@ class FuncionarioModel
 
     public function __construct()
     {
-        $this->pdo = Database::getInstance()->getConnection();
+        $this->pdo = Database::getConnection();
         $this->logger = new AuditLoggerService();
     }
 
-    public function getFuncionarioByEmail(string $email)
+    public function getFuncionarioByEmail(string $email): ?array
     {
-        $stmt = $this->pdo->prepare("SELECT * FROM {$this->table} WHERE email = :email");
+        $stmt = $this->pdo->prepare("SELECT * FROM {$this->table} WHERE email = :email LIMIT 1");
         $stmt->execute([':email' => $email]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
@@ -46,7 +46,14 @@ class FuncionarioModel
             ]);
 
             $id = (int)$this->pdo->lastInsertId();
-            $this->logger->log('CREATE', $this->table, $id, null, ['nome' => $data['nome_completo']], $userId);
+            $this->logger->log(
+                'CREATE',
+                $this->table,
+                $id,
+                null,
+                $data,
+                $userId
+            );
 
             $this->pdo->commit();
             return $id;
@@ -60,7 +67,7 @@ class FuncionarioModel
     {
         $start = (int)$params['start'];
         $length = (int)$params['length'];
-        $search = $params['search'];
+        $search = $params['search'] ?? '';
 
         $where = "WHERE 1=1 ";
         $binds = [];
@@ -70,7 +77,7 @@ class FuncionarioModel
             $binds[':s'] = "%{$search}%";
         }
 
-        $totalRecords = $this->pdo->query("SELECT COUNT(id) FROM {$this->table}")->fetchColumn();
+        $totalRecords = (int)$this->pdo->query("SELECT COUNT(id) FROM {$this->table}")->fetchColumn();
 
         $stmtF = $this->pdo->prepare("SELECT COUNT(id) FROM {$this->table} {$where}");
         $stmtF->execute($binds);
@@ -80,15 +87,17 @@ class FuncionarioModel
                 FROM {$this->table} {$where} ORDER BY nome_completo ASC LIMIT :start, :length";
 
         $stmt = $this->pdo->prepare($sql);
-        foreach ($binds as $k => $v) $stmt->bindValue($k, $v);
+        foreach ($binds as $k => $v) {
+            $stmt->bindValue($k, $v);
+        }
         $stmt->bindValue(':start', $start, PDO::PARAM_INT);
         $stmt->bindValue(':length', $length, PDO::PARAM_INT);
         $stmt->execute();
 
         return [
-            'total' => (int)$totalRecords,
-            'totalFiltered' => (int)$totalFiltered,
-            'data' => $stmt->fetchAll(PDO::FETCH_ASSOC)
+            'total'         => $totalRecords,
+            'totalFiltered' => $totalFiltered,
+            'data'          => $stmt->fetchAll(PDO::FETCH_ASSOC)
         ];
     }
 
@@ -104,7 +113,7 @@ class FuncionarioModel
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([':id' => $id]);
 
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     }
 
     /**
@@ -123,7 +132,7 @@ class FuncionarioModel
         foreach ($fields as $field) {
             if (array_key_exists($field, $data)) {
 
-                if ($field === 'senha_hash' && empty($data[$field]) && !empty($data['email'])) {
+                if ($field === 'senha_hash' && empty($data[$field])) {
                     continue;
                 }
 
@@ -137,7 +146,7 @@ class FuncionarioModel
             return false; // Nada para atualizar
         }
 
-        $sql = "UPDATE {$this->table} SET " . implode(', ', $setClauses) . " WHERE id = :id";
+        $sql = "UPDATE {$this->table} SET " . implode(', ', $setClauses) . ", data_atualizacao = NOW() WHERE id = :id";
         $bindValues[':id'] = $id;
 
         try {
