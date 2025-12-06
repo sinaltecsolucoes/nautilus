@@ -26,7 +26,7 @@ class Database
             $config = require ROOT_PATH . '/config/config.php';
 
             $dsn = sprintf(
-                "mysql:host=%s;dbname=%;charset=utf8mb4",
+                'mysql:host=%s;dbname=%s;charset=utf8mb4;',
                 $config['db']['host'],
                 $config['db']['name'],
             );

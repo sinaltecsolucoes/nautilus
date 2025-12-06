@@ -1,27 +1,23 @@
 <?php
 
+namespace App\Services;
+
+use App\Services\HttpService;
+
 /**
  * CLASSE DE SERVIÇO: EntidadeService
  * Local: app/Services/EntidadeService.php
  * Descrição: Lógica para busca de dados externos (CEP, CNPJ).
  */
 
-// Define ROOT_PATH como fallback (necessário para incluir HttpService)
-if (!defined('ROOT_PATH')) {
-    define('ROOT_PATH', dirname(dirname(__DIR__)));
-}
-require_once 'HttpService.php';
-require_once ROOT_PATH . '/config/config.php'; // Para BASE_URL e URLs das APIs
-
 class EntidadeService
 {
-
     /**
      * Busca informações de endereço a partir do ViaCEP.
      * @param string $cep O CEP a ser consultado (apenas números).
      * @return array|false Dados do endereço ou false em caso de erro.
      */
-    public static function buscarEnderecoPorCep($cep)
+    public static function buscarEnderecoPorCep(string $cep): array|false
     {
         $url = VIACEP_URL . $cep . '/json/';
         $data = HttpService::get($url);
@@ -43,10 +39,12 @@ class EntidadeService
      * @return array|false Dados da PJ (Razão Social, Endereço, etc.) ou false em caso de erro.
      */
 
-    public static function buscarDadosPJPorCnpj($cnpj)
+    public static function buscarDadosPJPorCnpj(string $cnpj): array|false
     {
         $cnpjLimpo = preg_replace('/\D/', '', $cnpj);
-        if (strlen($cnpjLimpo) !== 14) return false;
+        if (strlen($cnpjLimpo) !== 14) {
+            return false;
+        }
 
         $options = [
             "http" => [
@@ -61,25 +59,22 @@ class EntidadeService
         $context = stream_context_create($options);
 
         // 1. TENTATIVA: CNPJ.ws
-        $urlCnpjWs = "https://publica.cnpj.ws/cnpj/{$cnpjLimpo}";
-        $response = @file_get_contents($urlCnpjWs, false, $context);
+        $urlCnpjWs  = CNPJW_URL . $cnpjLimpo;
+        $response   = @file_get_contents($urlCnpjWs, false, $context);
         $dataCnpjWs = $response ? json_decode($response, true) : null;
 
         if ($dataCnpjWs && isset($dataCnpjWs['cnpj_raiz'])) {
-            $end = $dataCnpjWs['estabelecimento'] ?? [];
+            $end       = $dataCnpjWs['estabelecimento'] ?? [];
             $ufEmpresa = $end['estado']['sigla'] ?? '';
 
-            // --- NOVA LÓGICA DE IE (SIMPLIFICADA) ---
-            $ie = null;
+            // Captura inscriçaõ Estadual
+            $ie      = null;
             $debugIE = "IE Vazia";
 
             // 1. Tenta pegar da raiz (Padrão de algumas documentações)
-            $listaIEs = $dataCnpjWs['inscricoes_estaduais'] ?? [];
-
-            // 2. Se não achou na raiz, tenta pegar de dentro do estabelecimento (Seu caso)
-            if (empty($listaIEs)) {
-                $listaIEs = $dataCnpjWs['estabelecimento']['inscricoes_estaduais'] ?? [];
-            }
+            $listaIEs = $dataCnpjWs['inscricoes_estaduais']
+                ?? $dataCnpjWs['estabelecimento']['inscricoes_estaduais']
+                ?? [];
 
             // Agora varre a lista encontrada
             if (is_array($listaIEs) && !empty($listaIEs)) {
@@ -91,20 +86,19 @@ class EntidadeService
 
                         // Pega o primeiro que aparecer como garantia
                         if ($ie === null) {
-                            $ie = $limpo;
+                            $ie      = $limpo;
                             $debugIE = "IE Capturada (Primeira)";
                         }
 
                         // Se for ATIVA, essa é a campeã. Substitui e encerra.
                         if (!empty($item['ativo'])) {
-                            $ie = $limpo;
+                            $ie      = $limpo;
                             $debugIE = "IE Capturada (Ativa)";
                             break;
                         }
                     }
                 }
             }
-            // ----------------------------------------
 
             return [
                 'razao_social'       => strtoupper($dataCnpjWs['razao_social'] ?? ''),
@@ -124,9 +118,9 @@ class EntidadeService
         }
 
         // 2. FALLBACK: BrasilAPI
-        $urlBrasilApi = "https://brasilapi.com.br/api/cnpj/v1/{$cnpjLimpo}";
+        $urlBrasilApi   = BRASILAPI_CNPJ_URL . $cnpjLimpo;
         $responseBrasil = @file_get_contents($urlBrasilApi, false, $context);
-        $dataBrasilApi = $responseBrasil ? json_decode($responseBrasil, true) : null;
+        $dataBrasilApi  = $responseBrasil ? json_decode($responseBrasil, true) : null;
 
         if ($dataBrasilApi && !isset($dataBrasilApi['type'])) {
             return [

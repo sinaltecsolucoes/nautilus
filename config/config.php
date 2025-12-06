@@ -5,6 +5,19 @@
  * Usa variáveis de ambiente (.env) para segurança e flexibilidade.
  */
 
+// URL base da API ViaCEP
+if (!defined('VIACEP_URL')) {
+    define('VIACEP_URL', 'https://viacep.com.br/ws/');
+}
+
+// URL base da API BrasilAPI (se quiser centralizar também)
+if (!defined('BRASILAPI_CNPJ_URL')) {
+    define('BRASILAPI_CNPJ_URL', 'https://brasilapi.com.br/api/cnpj/v1/');
+}
+// URL base da API CNPJ.ws
+if (!defined('CNPJW_URL')) {
+    define('CNPJW_URL', 'https://www.receitaws.com.br/v1/cnpj/');
+}
 // Só declara se ainda não existir
 if (!function_exists('loadEnv')) {
     function loadEnv(string $path): void

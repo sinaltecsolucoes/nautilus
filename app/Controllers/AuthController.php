@@ -52,6 +52,8 @@ class AuthController extends BaseController
         $viewPath = ROOT_PATH . '/app/Views/login.php';
 
         if (file_exists($viewPath)) {
+
+            $config = require ROOT_PATH . '/config/config.php'; // carrega config
             // A View de Login é uma página HTML completa e lida com a exibição de erros
             require_once $viewPath;
         } else {

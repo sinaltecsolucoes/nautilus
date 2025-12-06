@@ -1,28 +1,21 @@
 <?php
 
-/**
- * CLASSE CONTROLLER: EntidadeController
- * Local: app/Controllers/EntidadeController.php
- * Descrição: Gerencia as rotas CRUD e as chamadas de API para Entidades.
- */
+namespace App\Controllers;
 
-// Inclui Models e Services
-require_once ROOT_PATH . '/app/Models/EntidadeModel.php';
-require_once ROOT_PATH . '/app/Services/PermissaoService.php';
-require_once ROOT_PATH . '/app/Services/EntidadeService.php'; // Nosso serviço CNPJ/CEP
-require_once ROOT_PATH . '/app/Helpers/functions.php';
+use App\Core\BaseController;
+use App\Models\EntidadeModel;
+use App\Services\PermissaoService;
+use App\Services\EntidadeService;
 
-class EntidadeController
+
+class EntidadeController extends BaseController
 {
-    private $entidadeModel;
+    private EntidadeModel $entidadeModel;
 
-    public function __construct()
+    public function __construct(?EntidadeModel $entidadeModel = null)
     {
-        // Garante que a sessão esteja ativa para ACL
-        if (session_status() == PHP_SESSION_NONE) {
-            session_start();
-        }
-        $this->entidadeModel = new EntidadeModel();
+        // Injeção de dependência
+        $this->entidadeModel = $entidadeModel ?? new EntidadeModel();
     } 
 
     // =================================================================
@@ -39,22 +32,21 @@ class EntidadeController
 
         // VERIFICAÇÃO DE PERMISSÃO (ACL/RBAC)
         if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Ler')) {
-            http_response_code(403);
-            die("Acesso Negado: Você não tem permissão para visualizar este módulo.");
+            $this->jsonResponse(
+                ['success' => 'false', 'message' => 'Acesso Negado: Você não tem permissão para visualizar este módulo.'],
+                403
+            );
         }
 
         $data = [
-            'title' => ucfirst($pageType) . 's', // Título dinâmico
-            'pageType' => $pageType,
+            'title'      => ucfirst($pageType) . 's', // Título dinâmico
+            'pageType'   => $pageType,
             'csrf_token' => $_SESSION['csrf_token'] ?? $this->generateCsrfToken(), // Gera token
             'pageScript' => 'entidades',
         ];
 
         // RENDERIZAÇÃO
-        ob_start();
-        require_once ROOT_PATH . '/app/Views/entidades/lista_entidades.php';
-        $content = ob_get_clean();
-        require_once ROOT_PATH . '/app/Views/layout.php';
+        $this->view('entidades/lista_entidades', $data);
     }
 
     // =================================================================
@@ -74,26 +66,97 @@ class EntidadeController
             exit;
         }
 
+        // Validação CSRF
+        if (!$this->isValidCsrf($_POST['csrf_token'] ?? '')) {
+            $this->jsonResponse(
+                ['success' => false, 'message' => 'Token CSRF inválido.'],
+                403
+            );
+        }
+
         $termo = trim($_POST['termo'] ?? '');
         $tipo = $_POST['tipo'] ?? ''; // 'cnpj' ou 'cep'
 
         if (empty($termo)) {
-            echo json_encode(['success' => false, 'message' => 'Termo de busca vazio.']);
-            exit;
+            $this->jsonResponse(['success' => false, 'message' => 'Termo de busca vazio.']);
         }
 
-        if ($tipo === 'cnpj') {
-            $dados = EntidadeService::buscarDadosPJPorCnpj($termo);
-        } elseif ($tipo === 'cep') {
-            $dados = EntidadeService::buscarEnderecoPorCep($termo);
-        } else {
-            $dados = false;
+        switch ($tipo) {
+            case 'cnpj':
+                $dados = EntidadeService::buscarDadosPJPorCnpj($termo);
+                break;
+            case 'cep':
+                $dados = EntidadeService::buscarEnderecoPorCep($termo);
+                break;
+            default:
+                $this->jsonResponse(
+                    ['success' => false, 'message' => 'Tipo de busca inválido.'],
+                    400
+                );
         }
 
-        if ($dados) {
-            echo json_encode(['success' => true, 'data' => $dados]);
-        } else {
-            echo json_encode(['success' => false, 'message' => 'Dados não encontrados ou API inacessível.']);
+        echo json_encode(
+            $dados
+                ? ['success' => true, 'data' => $dados]
+                : ['success' => false, 'message' => 'Dados não encontrados ou API inacessível.']
+        );
+    }
+
+    /**
+     * Retorna a lista de entidades para o DataTables.
+     */
+    public function listarEntidades()
+    {
+        // 1. VERIFICAÇÃO DE PERMISSÃO (ACL/RBAC)
+        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Ler')) {
+            $this->jsonResponse(
+                ["error" => "Acesso negado."],
+                403
+            );
+        }
+
+        // Validação CSRF
+        if (!$this->isValidCsrf($_POST['csrf_token'] ?? '')) {
+            $this->jsonResponse(
+                ['error' => 'Token CSRF inválido.'],
+                403
+            );
+        }
+
+        // 2. Coleta de Parâmetros do DataTables (POST)
+        $draw         = filter_input(INPUT_POST, 'draw', FILTER_VALIDATE_INT) ?? 1;
+        $start        = filter_input(INPUT_POST, 'start', FILTER_VALIDATE_INT) ?? 0;
+        $length       = filter_input(INPUT_POST, 'length', FILTER_VALIDATE_INT) ?? 10;
+        $searchValue  = $_POST['search']['value'] ?? '';
+        $tipoEntidade = filter_input(INPUT_POST, 'tipo_entidade', FILTER_SANITIZE_SPECIAL_CHARS) ?? 'cliente';
+
+        // Captura a ordenação enviada pelo DataTables
+        $order = $_POST['order'] ?? [];
+
+        try {
+            $resultado = $this->entidadeModel->findAllForDataTable([
+                'start'         => $start,
+                'length'        => $length,
+                'search'        => ['value' => $searchValue],
+                'tipo_entidade' => $tipoEntidade,
+                'order'         => $order, // Passando ordenação para o Model
+                'draw'          => $draw
+            ]);
+
+            // Usa as chaves exatas retornadas pelo modelo
+            $this->jsonResponse([
+                'draw'            => $draw,
+                'recordsTotal'    => $resultado['recordsTotal'],
+                'recordsFiltered' => $resultado['recordsFiltered'],
+                'data'            => $resultado['data']
+            ]);
+        } catch (\Exception $e) {
+            error_log("Erro no listarEntidades: " . $e->getMessage());
+            $this->jsonResponse(
+                ['success' => false, 'error' => 'Erro interno ao buscar dados.'],
+                500
+            );
         }
     }
 
@@ -104,9 +167,11 @@ class EntidadeController
     private function getPageTypeFromRoute(): string
     {
         $route = $_GET['route'] ?? 'clientes'; // Assume padrão
-        if (strpos($route, 'fornecedores') !== false) return 'fornecedor';
-        if (strpos($route, 'transportadoras') !== false) return 'transportadora';
-        return 'cliente'; // Padrão
+        return match (true) {
+            str_contains($route, 'fornecedores') => 'fornecedor',
+            str_contains($route, 'transportadoras') => 'transportadora',
+            default => 'cliente',
+        };
     }
 
     private function generateCsrfToken()
@@ -117,83 +182,50 @@ class EntidadeController
     }
 
     /**
-     * Retorna a lista de entidades para o DataTables (AJAX POST).
-     */
-    public function listarEntidades()
-    {
-        // 1. VERIFICAÇÃO DE PERMISSÃO (ACL/RBAC)
-        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
-        if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Ler')) {
-            http_response_code(403);
-            echo json_encode(["error" => "Acesso negado."]);
-            exit;
-        }
-
-        // 2. Coleta de Parâmetros do DataTables (POST)
-        $draw = filter_input(INPUT_POST, 'draw', FILTER_VALIDATE_INT) ?? 1;
-        $start = filter_input(INPUT_POST, 'start', FILTER_VALIDATE_INT) ?? 0;
-        $length = filter_input(INPUT_POST, 'length', FILTER_VALIDATE_INT) ?? 10;
-        $searchValue = filter_input(INPUT_POST, 'search', FILTER_DEFAULT, FILTER_REQUIRE_ARRAY)['value'] ?? '';
-        $tipoEntidade = filter_input(INPUT_POST, 'tipo_entidade', FILTER_SANITIZE_SPECIAL_CHARS) ?? 'cliente';
-
-        // Captura a ordenação enviada pelo DataTables
-        $order = $_POST['order'] ?? [];
-
-        try {
-            $resultado = $this->entidadeModel->findAllForDataTable([
-                'start'  => $start,
-                'length' => $length,
-                'search' => ['value' => $searchValue],
-                'tipo_entidade' => $tipoEntidade,
-                'order'  => $order, // Passando ordenação para o Model
-                'draw'   => $draw
-            ]);
-
-            // Usa as chaves exatas retornadas pelo modelo
-            echo json_encode([
-                'draw'            => $draw,
-                'recordsTotal'    => $resultado['recordsTotal'],
-                'recordsFiltered' => $resultado['recordsFiltered'],
-                'data'            => $resultado['data']
-            ]);
-        } catch (\Exception $e) {
-            http_response_code(500);
-            error_log("Erro no listarEntidades: " . $e->getMessage());
-            echo json_encode(['error' => 'Erro interno ao buscar dados.']);
-        }
-    }
-
-    /**
      * Salva ou Atualiza uma entidade (POST).
      */
-    public function salvarEntidade()
+    public function salvarEntidade(): void
     {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            $this->jsonResponse(
+                ['success' => false, 'message' => 'Método não permitido.'],
+                405
+            );
+        }
+
+        // Validação CSRF
+        if (!$this->isValidCsrf($_POST['csrf_token'] ?? '')) {
+            $this->jsonResponse(
+                ['error' => 'Token CSRF inválido.'],
+                403
+            );
+        }
+
         // 1. HIGIENIZAÇÃO GERAL (Aplica str_upper em tudo que é texto)
-        $POST = sanitize_input_array($_POST);
-
-        $id = filter_input(INPUT_POST, 'ent_codigo', FILTER_VALIDATE_INT);
+        $POST   = sanitize_input_array($_POST);
+        $id     = filter_input(INPUT_POST, 'ent_codigo', FILTER_VALIDATE_INT);
         $userId = $_SESSION['user_id'] ?? 0;
-        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
-
-        $acao = $id ? 'Alterar' : 'Criar';
+        $cargo  = $_SESSION['user_cargo'] ?? 'Visitante';
+        $acao   = $id ? 'Alterar' : 'Criar';
 
         // Verificação de permissão
         if (!PermissaoService::checarPermissao($cargo, 'Entidades', $acao)) {
-            http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Acesso negado para ' . $acao . '.']);
-            exit;
+            $this->jsonResponse(
+                ['success' => false, 'message' => "Acesso negado para {$acao}."],
+                403
+            );
         }
 
         // Monta array com dados da entidade (campos esperados pelo Model)
         $dadosEntidade = [
             'tipo'                  => ucfirst(filter_input(INPUT_POST, 'tipo') ?? 'cliente'),
-            'tipo_pessoa'           => filter_input(INPUT_POST, 'tipo_pessoa'),
+            'tipo_pessoa'           => $_POST['tipo_pessoa'],
             'razao_social'          => $POST['razao_social'],
             'nome_fantasia'         => $POST['nome_fantasia'] ?? null,
-            'codigo_interno'        => filter_input(INPUT_POST, 'codigo_interno') ?: null,
+            'codigo_interno'        => $_POST['codigo_interno'] ?? null,
             'cnpj_cpf'              => preg_replace('/\D/', '', filter_input(INPUT_POST, 'cnpj_cpf') ?? ''),
-            'inscricao_estadual_rg' => filter_input(INPUT_POST, 'inscricao_estadual_rg') ?: null,
-            'situacao'              => filter_input(INPUT_POST, 'situacao') ?? 'Ativo',
+            'inscricao_estadual_rg' => $_POST['inscricao_estadual_rg'] ?? null,
+            'situacao'              => $_POST['situacao'] ?? 'Ativo',
             // Endereço principal (o Model espera dentro de 'endereco_principal')
             'endereco_principal'    => [
                 'cep'         => preg_replace('/\D/', '', $_POST['end_cep'] ?? ''),
@@ -218,55 +250,36 @@ class EntidadeController
                 $message = 'Entidade cadastrada com sucesso!';
             }
 
-            // LIMPA O BUFFER ANTES (Segurança extra)
-            if (ob_get_length()) ob_clean();
-
-            echo json_encode([
-                'success'     => true,
-                'message'     => $message,
-                'ent_codigo'  => $newId
-            ]);
-
-            exit;
+            $this->jsonResponse(['success' => true, 'message' => $message, 'ent_codigo' => $newId]);
         } catch (\PDOException $e) {
+            error_log("Erro salvarEntidade: " . $e->getMessage());
 
-            if (ob_get_length()) ob_clean();
-            $errorCode = $e->getCode();
+            if ($e->getCode() === '23000') {
 
-            $errorMessage = $e->getMessage();
+                // Busca a entidade existente para pegar o ID
+                $campo = str_contains($e->getMessage(), 'cnpj_cpf_unique')
+                    ? 'cnpj_cpf'
+                    : 'codigo_interno';
 
-            if ($errorCode === '23000') {
-                // Detecta duplicidade por CNPJ/CPF ou Código Interno
-                if (
-                    strpos($errorMessage, 'cnpj_cpf_unique') !== false ||
-                    strpos($errorMessage, 'codigo_interno_unique') !== false
-                ) {
+                $valor = $_POST[$campo] ?? $_POST['cnpj_cpf'] ?? '';
 
-                    // Busca a entidade existente para pegar o ID
-                    $campo = strpos($errorMessage, 'cnpj_cpf_unique') !== false ? 'cnpj_cpf' : 'codigo_interno';
-                    $valor = $_POST[$campo] ?? $_POST['cnpj_cpf'] ?? '';
+                $entidadeExistente = $this->entidadeModel->findByDocumentOrCode($valor);
 
-                    $entidadeExistente = $this->entidadeModel->findByDocumentOrCode($valor);
-
-                    echo json_encode([
-                        'success' => false,
-                        'error_type' => 'duplicado',
-                        'entidade_id' => $entidadeExistente['id'] ?? null,
-                        'message' => "Já existe um cadastro com esse " .
-                            ($campo === 'cnpj_cpf' ? 'CNPJ/CPF' : 'Código Interno') . "."
-                    ]);
-                    exit;
-                }
+                $this->jsonResponse([
+                    'success'     => false,
+                    'error_type'  => 'duplicado',
+                    'entidade_id' => $entidadeExistente['id'] ?? null,
+                    'message'     => "Já existe um cadastro com esse " .
+                        ($campo === 'cnpj_cpf' ? 'CNPJ/CPF' : 'Código Interno') . "."
+                ]);
             }
-        }
 
-        // Outros erros
-        echo json_encode([
-            'success' => false,
-            'error_type' => 'erro_servidor',
-            'message' => 'Erro interno no servidor. Tente novamente.'
-        ]);
-        exit;
+            $this->jsonResponse([
+                'success'    => false,
+                'error_type' => 'erro_servidor',
+                'message'    => 'Erro interno no servidor. Tente novamente.'
+            ]);
+        }
     }
 
     /**
@@ -274,108 +287,94 @@ class EntidadeController
      */
     public function getEntidade()
     {
-        $id = filter_input(INPUT_POST, 'ent_codigo', FILTER_VALIDATE_INT);
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            $this->jsonResponse(
+                ['success' => false, 'message' => 'Método não permitido.'],
+                405
+            );
+        }
+
+        if (!$this->isValidCsrf($_POST['csrf_token'] ?? '')) {
+            $this->jsonResponse(
+                ['success' => false, 'message' => 'Token CSRF inválido.'],
+                403
+            );
+        }
+
+        $id    = filter_input(INPUT_POST, 'ent_codigo', FILTER_VALIDATE_INT);
         $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
 
         // VERIFICAÇÃO DE PERMISSÃO (ACL/RBAC)
         if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Ler')) {
-            http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Acesso negado.']);
-            exit;
+            $this->jsonResponse(
+                ['success' => false, 'message' => 'Acesso negado.'],
+                403
+            );
         }
 
         if (!$id) {
-            echo json_encode(['success' => false, 'message' => 'ID inválido.']);
-            exit;
+            $this->jsonResponse(['success' => false, 'message' => 'ID inválido.']);
         }
 
         $dados = $this->entidadeModel->find($id); // Usa o método find do Model
 
-        if ($dados) {
-            echo json_encode(['success' => true, 'data' => $dados]);
-        } else {
-            echo json_encode(['success' => false, 'message' => 'Entidade não encontrada.']);
-        }
+        $this->jsonResponse(
+            $dados
+                ? ['success' => true, 'data' => $dados]
+                : ['success' => false, 'message' => 'Entidade não encontrada.']
+        );
     }
-
-    /**
-     * Rota AJAX para retornar opções de Clientes ativos para Select2.
-     * Retorna no formato esperado pelo Select2: { results: [...] }
-     */
-    /* public function getClientesOptions()
-    {
-        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
-        // A permissão para 'Ler' Entidades já deve bastar para esta busca
-        if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Ler')) {
-            http_response_code(403);
-            echo json_encode(["results" => [], "error" => "Acesso negado."]);
-            exit;
-        }
-
-        // O Select2 envia o termo de busca via GET (ou POST, dependendo da configuração)
-        $term = $_GET['term'] ?? '';
-
-        try {
-            // O método getClienteOptions precisa ser adicionado ao EntidadeModel!
-            $options = $this->entidadeModel->getClienteOptions($term);
-
-            // O Select2 espera os dados dentro de uma chave 'results'.
-            // Vamos formatar para [ { id: ID_ENTIDADE, text: 'NOME FANTASIA (Cód: X)' } ]
-
-            $results = array_map(function ($item) {
-                // Adapta o nome para o formato Select2
-                $nomeDisplay = $item['nome_fantasia'] ?? $item['razao_social'];
-                return [
-                    'id' => $item['id'],
-                    'text' => $nomeDisplay . ' (Cód: ' . ($item['codigo_interno'] ?? 'N/A') . ')'
-                ];
-            }, $options);
-
-            echo json_encode(['results' => $results]);
-        } catch (\Exception $e) {
-            error_log("Erro em getClientesOptions: " . $e->getMessage());
-            echo json_encode(['results' => [], 'error' => 'Erro ao buscar clientes.']);
-        }
-    } */
 
     /**
      * Deleta uma entidade (POST).
      */
     public function deleteEntidade()
     {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            $this->jsonResponse(
+                ['success' => false, 'message' => 'Método não permitido.'],
+                405
+            );
+        }
+
+        if (!$this->isValidCsrf($_POST['csrf_token'] ?? '')) {
+            $this->jsonResponse(
+                ['success' => false, 'message' => 'Token CSRF inválido.'],
+                403
+            );
+        }
+
         // 1. Verificação de Ação (DELETE)
-        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        $cargo  = $_SESSION['user_cargo'] ?? 'Visitante';
         $userId = $_SESSION['user_id'] ?? 0;
-        $id = filter_input(INPUT_POST, 'ent_codigo', FILTER_VALIDATE_INT);
+        $id     = filter_input(INPUT_POST, 'ent_codigo', FILTER_VALIDATE_INT);
 
         // VERIFICAÇÃO DE PERMISSÃO (ACL/RBAC)
         if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Deletar')) {
-            http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Acesso negado para Deletar.']);
-            exit;
+            $this->jsonResponse(
+                ['success' => false, 'message' => 'Acesso negado para Deletar.'],
+                403
+            );
         }
 
         if (!$id) {
-            echo json_encode(['success' => false, 'message' => 'ID inválido para exclusão.']);
-            exit;
+            $this->jsonResponse(['success' => false, 'message' => 'ID inválido para exclusão.']);
         }
 
         try {
             // Chama o método delete do Model
             if ($this->entidadeModel->delete($id, $userId)) {
-                echo json_encode(['success' => true, 'message' => 'Entidade excluída com sucesso!']);
+                $this->jsonResponse(['success' => true, 'message' => 'Entidade excluída com sucesso!']);
             } else {
                 // Caso não tenha dado erro, mas não excluiu (registro não encontrado, etc.)
-                echo json_encode(['success' => false, 'message' => 'Falha ao excluir. Entidade não encontrada ou erro interno.']);
+                $this->jsonResponse(['success' => false, 'message' => 'Falha ao excluir. Entidade não encontrada ou erro interno.']);
             }
         } catch (\PDOException $e) {
-            // Tratamento para restrições de chave estrangeira (se a entidade for usada em PREVISOES_VENDAS, por exemplo)
-            if ($e->getCode() === '23000') {
-                $message = "Erro: Não é possível excluir esta entidade. Ela está vinculada a Previsões de Vendas ou outros registros (restrição 'RESTRICT').";
-            } else {
-                $message = "Erro no banco de dados. " . $e->getMessage();
-            }
-            echo json_encode(['success' => false, 'message' => $message]);
+            error_log("Erro deleteEntidade: " . $e->getMessage());
+            $message = $e->getCode() === '23000'
+                ? "Erro: Não é possível excluir esta entidade. Ela está vinculada a outros registros."
+                : "Erro interno no banco de dados.";
+            $this->jsonResponse(['success' => false, 'message' => $message]);
         }
     }
 
@@ -384,22 +383,30 @@ class EntidadeController
      */
     public function getEnderecoAdicional()
     {
+        if (!$this->isValidCsrf($_POST['csrf_token'] ?? '')) {
+            $this->jsonResponse(
+                ['success' => false, 'message' => 'Token CSRF inválido.'],
+                403
+            );
+        }
+
         $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
         $id = filter_input(INPUT_POST, 'end_id', FILTER_VALIDATE_INT);
 
         if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Ler')) {
-            http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Acesso negado.']);
-            exit;
+            $this->jsonResponse(
+                ['success' => false, 'message' => 'Acesso negado.'],
+                403
+            );
         }
 
         $dados = $this->entidadeModel->findEnderecoAdicional($id);
 
-        if ($dados) {
-            echo json_encode(['success' => true, 'data' => $dados]);
-        } else {
-            echo json_encode(['success' => false, 'message' => 'Endereço não encontrado.']);
-        }
+        $this->jsonResponse(
+            $dados
+                ? ['success' => true, 'data' => $dados]
+                : ['success' => false, 'message' => 'Endereço não encontrado.']
+        );
     }
 
     /**
@@ -407,27 +414,34 @@ class EntidadeController
      */
     public function listarEnderecosAdicionais()
     {
+        if (!$this->isValidCsrf($_POST['csrf_token'] ?? '')) {
+            $this->jsonResponse(
+                ['error' => 'Token CSRF inválido.'],
+                403
+            );
+        }
+
         // A ACL deve checar a permissão 'Ler' em 'Entidades'
         $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
         if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Ler')) {
-            http_response_code(403);
-            echo json_encode(["error" => "Acesso negado para listar endereços."]);
-            exit;
+            $this->jsonResponse(
+                ["error" => "Acesso negado para listar endereços."],
+                403
+            );
         }
 
         $entidadeId = filter_input(INPUT_POST, 'entidade_id', FILTER_VALIDATE_INT);
         if (!$entidadeId) {
-            echo json_encode(["data" => []]); // Retorna vazio se não tiver ID
-            exit;
+            $this->jsonResponse(["data" => []]); // Retorna vazio se não tiver ID
         }
 
         try {
             $data = $this->entidadeModel->getEnderecosAdicionais($entidadeId);
             // Formato DataTables simplificado, já que não usamos Server-Side aqui
-            echo json_encode(["data" => $data]);
+            $this->jsonResponse(["data" => $data]);
         } catch (\Exception $e) {
-            error_log("Erro em listarEnderecosAdicionais: " . $e->getMessage());
-            echo json_encode(["error" => "Erro ao processar dados."]);
+            error_log("Erro listarEnderecosAdicionais: " . $e->getMessage());
+            $this->jsonResponse(["error" => "Erro ao processar dados."]);
         }
     }
 
@@ -436,33 +450,40 @@ class EntidadeController
      */
     public function salvarEnderecoAdicional()
     {
-        $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
+        if (!$this->isValidCsrf($_POST['csrf_token'] ?? '')) {
+            $this->jsonResponse(
+                ['success' => false, 'message' => 'Token CSRF inválido.'],
+                403
+            );
+        }
+
+        $cargo      = $_SESSION['user_cargo'] ?? 'Visitante';
         $entidadeId = filter_input(INPUT_POST, 'entidade_id', FILTER_VALIDATE_INT);
-        $endId = filter_input(INPUT_POST, 'end_id', FILTER_VALIDATE_INT); // ID do endereço
-        $acao = $endId ? 'Alterar' : 'Criar';
+        $endId      = filter_input(INPUT_POST, 'end_id', FILTER_VALIDATE_INT); // ID do endereço
+        $acao       = $endId ? 'Alterar' : 'Criar';
 
         // A ACL deve checar a permissão 'acao' em 'Entidades' 
         if (!PermissaoService::checarPermissao($cargo, 'Entidades', $acao)) {
-            http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Acesso negado para salvar endereço adicional.']);
-            exit;
+            $this->jsonResponse(
+                ['success' => false, 'message' => 'Acesso negado para salvar endereço adicional.'],
+                403
+            );
         }
 
         if (!$entidadeId) {
-            echo json_encode(['success' => false, 'message' => 'Entidade ID inválida. Salve a entidade principal primeiro.']);
-            exit;
+            $this->jsonResponse(['success' => false, 'message' => 'Entidade ID inválida. Salve a entidade principal primeiro.']);
         }
 
         // Coleta e validação de dados
         $dataEndereco = [
-            'tipo_endereco' => filter_input(INPUT_POST, 'tipo_endereco', FILTER_SANITIZE_SPECIAL_CHARS),
-            'cep'           => filter_input(INPUT_POST, 'cep', FILTER_SANITIZE_SPECIAL_CHARS),
-            'logradouro'    => filter_input(INPUT_POST, 'logradouro', FILTER_SANITIZE_SPECIAL_CHARS),
-            'numero'        => filter_input(INPUT_POST, 'numero', FILTER_SANITIZE_SPECIAL_CHARS),
-            'complemento'   => filter_input(INPUT_POST, 'complemento', FILTER_SANITIZE_SPECIAL_CHARS),
-            'bairro'        => filter_input(INPUT_POST, 'bairro', FILTER_SANITIZE_SPECIAL_CHARS),
-            'cidade'        => filter_input(INPUT_POST, 'cidade', FILTER_SANITIZE_SPECIAL_CHARS),
-            'uf'            => filter_input(INPUT_POST, 'uf', FILTER_SANITIZE_SPECIAL_CHARS),
+            'tipo_endereco' => $_POST['tipo_endereco'] ?? '',
+            'cep'           => $_POST['cep'] ?? '',
+            'logradouro'    => $_POST['logradouro'] ?? '',
+            'numero'        => $_POST['numero'] ?? '',
+            'complemento'   => $_POST['complemento'] ?? '',
+            'bairro'        => $_POST['bairro'] ?? '',
+            'cidade'        => $_POST['cidade'] ?? '',
+            'uf'            => $_POST['uf'] ?? '',
             'end_id'        => $endId,
         ];
 
@@ -477,14 +498,10 @@ class EntidadeController
                 $newId = $this->entidadeModel->createEnderecoAdicional($entidadeId, $dataEndereco);
                 $message = 'Endereço adicional salvo com sucesso!';
             }
-
-            if ($newId) {
-                echo json_encode(['success' => true, 'message' => $message, 'end_id' => $newId]);
-            } else {
-                echo json_encode(['success' => false, 'message' => 'Erro ao salvar o endereço no banco de dados.']);
-            }
+            $this->jsonResponse(['success' => true, 'message' => $message, 'end_id' => $newId]);
         } catch (\PDOException $e) {
-            echo json_encode(['success' => false, 'message' => 'Erro no banco de dados: ' . $e->getMessage()]);
+            error_log("Erro salvarEnderecoAdicional: " . $e->getMessage());
+            $this->jsonResponse(['success' => false, 'message' => 'Erro interno no banco de dados.']);
         }
     }
 
@@ -493,28 +510,45 @@ class EntidadeController
      */
     public function deleteEnderecoAdicional()
     {
+        if (!$this->isValidCsrf($_POST['csrf_token'] ?? '')) {
+            $this->jsonResponse(
+                ['success' => false, 'message' => 'Token CSRF inválido.'],
+                403
+            );
+        }
+
         $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
         $endId = filter_input(INPUT_POST, 'end_id', FILTER_VALIDATE_INT);
 
         if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Alterar')) {
-            http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Acesso negado.']);
-            exit;
+            echo json_encode(
+                ['success' => false, 'message' => 'Acesso negado.'],
+                403
+            );
         }
 
         if (!$endId) {
-            echo json_encode(['success' => false, 'message' => 'ID de endereço inválido.']);
-            exit;
+            $this->jsonResponse(['success' => false, 'message' => 'ID de endereço inválido.']);
         }
 
         try {
             if ($this->entidadeModel->deleteEnderecoAdicional($endId)) {
-                echo json_encode(['success' => true, 'message' => 'Endereço adicional excluído com sucesso!']);
+                $this->jsonResponse(
+                    ['success' => true, 'message' => 'Endereço adicional excluído com sucesso!'],
+                    200
+                );
             } else {
-                echo json_encode(['success' => false, 'message' => 'Falha ao excluir. Endereço não encontrado.']);
+                $this->jsonResponse(
+                    ['success' => false, 'message' => 'Falha ao excluir. Endereço não encontrado.'],
+                    500
+                );
             }
-        } catch (\PDOException $e) {
-            echo json_encode(['success' => false, 'message' => 'Erro no banco de dados.']);
+        } catch (\Exception $e) {
+            error_log("Erro no deleteEnderecoAdicional: " . $e->getMessage());
+            $this->jsonResponse(
+                ['success' => false, 'message' => 'Erro interno ao deletar endereço adicional.'],
+                500
+            );
         }
     }
 
@@ -526,8 +560,10 @@ class EntidadeController
         $cargo = $_SESSION['user_cargo'] ?? 'Visitante';
         // Permissão de Leitura já basta para gerar o código
         if (!PermissaoService::checarPermissao($cargo, 'Entidades', 'Ler')) {
-            echo json_encode(['success' => false, 'code' => '']);
-            exit;
+            $this->jsonResponse(
+                ['success' => false, 'code' => ''],
+                403
+            );
         }
 
         try {
@@ -537,9 +573,16 @@ class EntidadeController
             // Se for mais dígitos, mudar o 4 para 6
             $formattedCode = str_pad($nextId, 4, '0', STR_PAD_LEFT);
 
-            echo json_encode(['success' => true, 'code' => $formattedCode]);
+            $this->jsonResponse(
+                ['success' => true, 'code' => $formattedCode],
+                200
+            );
         } catch (\Exception $e) {
-            echo json_encode(['success' => false, 'code' => '']);
+            error_log("Erro no getProximoCodigo: " . $e->getMessage());
+            $this->jsonResponse(
+                ['success' => false, 'code' => ''],
+                500
+            );
         }
     }
 }

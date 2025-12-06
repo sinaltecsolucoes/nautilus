@@ -1,6 +1,6 @@
 <?php
 // nautilus/app/Views/login.php
-// View da tela de login adaptada do SGI ERP para NAUTULUS ERP
+// View da tela de login para NAUTULUS ERP
 // Esta é uma View completa (Standalone).
 
 // Nota: A variável BASE_URL deve ser definida em config.php e incluída no roteador (index.php)
@@ -8,7 +8,7 @@
 $mensagem_erro_login = '';
 // Verifica se há mensagem de erro na sessão
 if (isset($_SESSION['erro_login'])) {
-    $mensagem_erro_login = htmlspecialchars($_SESSION['erro_login']);
+    $mensagemErro = htmlspecialchars($_SESSION['erro_login'], ENT_QUOTES, 'UTF-8');
     unset($_SESSION['erro_login']); // Limpa o erro após exibição
 }
 
@@ -22,67 +22,85 @@ if (isset($_SESSION['erro_login'])) {
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>NAUTULUS ERP - Login</title>
 
+    <!-- Bootstrap -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
 
-    <link href="<?php echo BASE_URL; ?>/assets/css/login.css" rel="stylesheet">
-
+    <!-- CSS customizado -->
+    <link href="<?php echo $config['app']['base_url']; ?>/assets/css/login.css" rel="stylesheet">
 </head>
 
-<body>
-
-    <div class="container">
+<body class="bg-light">
+    <div class="container py-5">
         <div class="row justify-content-center">
             <div class="col-md-6 col-lg-5 col-xl-4">
 
-                <div id="login-box">
+                <div id="login-box" class="card shadow-sw p-4">
 
-                    <img src="<?php echo BASE_URL; ?>/assets/img/nautilus_logo_placeholder.png" alt="Logo NAUTULUS ERP" id="login-logo">
+                    <div class="text-center mb-4">
 
-                    <form id="login-form" class="form" action="<?php echo BASE_URL; ?>/login" method="post">
+                        <img src="<?php echo BASE_URL; ?>/assets/img/nautilus_logo_placeholder.png"
+                            alt="Logo NAUTULUS ERP"
+                            id="login-logo"
+                            class="img-fluid"
+                            style="max-height: 80px;">
 
-                        <?php if (!empty($mensagem_erro_login)): ?>
-                            <div class="alert alert-danger text-center" role="alert">
-                                <?php echo $mensagem_erro_login; ?>
+                        <form id="login-form"
+                            class="form"
+                            action="<?php echo BASE_URL; ?>/login"
+                            method="post" novalidate>
+
+                            <?php if (!empty($mensagemErro)): ?>
+                                <div class="alert alert-danger text-center" role="alert">
+                                    <?php echo $mensagemErro; ?>
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="mb-3">
+                                <label for="login-usuario" class="form-label">Login (Email):</label>
+                                <input type="email"
+                                    name="login"
+                                    id="login-usuario"
+                                    class="form-control" required autofocus>
                             </div>
-                        <?php endif; ?>
+                            <div class="mb-3">
+                                <label for="senha" class="form-label">Senha:</label>
+                                <input type="password"
+                                    name="senha"
+                                    id="senha"
+                                    class="form-control" required>
 
-                        <div class="form-group text-start mb-3">
-                            <label for="login-usuario">Login (Email):</label>
-                            <input type="text" name="login" id="login-usuario" class="form-control" required>
-                        </div>
-                        <div class="form-group text-start mb-3">
-                            <label for="senha">Senha:</label>
-                            <input type="password" name="senha" id="senha" class="form-control" required>
-
-                            <div class="form-check mt-2">
-                                <input class="form-check-input" type="checkbox" id="exibir-senha-login">
-                                <label class="form-check-label" for="exibir-senha-login">Exibir Senha</label>
+                                <div class="form-check d-flex align-items=center gap-2 mt-2">
+                                    <input class="form-check-input" type="checkbox" id="exibir-senha-login">
+                                    <label class="form-check-label mb-0" for="exibir-senha-login">Exibir Senha</label>
+                                </div>
                             </div>
-                        </div>
-                        <div class="form-group text-center">
-                            <input type="submit" name="conectar" class="btn btn-info" value="Entrar">
-                        </div>
-                    </form>
+
+                            <div class="d-grid">
+                                <button type="submit"
+                                    name="conectar"
+                                    class="btn btn-primary"><i class="fas fa-sign-in-alt me-2"></i>Entrar
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
                 </div>
-
             </div>
         </div>
-    </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const elSenha = document.getElementById('senha');
-            const elCheckbox = document.getElementById('exibir-senha-login');
-            if (elSenha && elCheckbox) {
-                elCheckbox.addEventListener('change', function() {
-                    elSenha.type = this.checked ? 'text' : 'password';
-                });
-            }
-        });
-    </script>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"></script>
-
+        <!-- Scripts -->
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"></script>
+        <script>
+            document.addEventListener('DOMContentLoaded', () => {
+                const senhaInput = document.getElementById('senha');
+                const toggleSenha = document.getElementById('exibir-senha-login');
+                if (senhaInput && toggleSenha) {
+                    toggleSenha.addEventListener('change', () => {
+                        senhaInput.type = toggleSenha.checked ? 'text' : 'password';
+                    });
+                }
+            });
+        </script>
 </body>
 
 </html>

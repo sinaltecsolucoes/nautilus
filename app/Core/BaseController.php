@@ -99,4 +99,9 @@ abstract class BaseController
         // Renderiza o layout principal
         require $layoutFile;
     }
+
+    protected function isValidCsrf(string $token): bool
+    {
+        return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+    }
 }

@@ -1,590 +1,338 @@
-$(document).ready(function () {
-    // Detecta o tipo de página (cliente/fornecedor)
-    // O JS agora busca o valor do input hidden 'ent_tipo' se o body data não existir
-    const pageType = $('body').data('page-type') || $('#ent_tipo').val()?.toLowerCase() || 'cliente';
+/**
+ * SCRIPT JAVASCRIPT: Lógica do Módulo de Entidades
+ * Local: assets/js/entidades.js
+ * Descrição: Gerencia o CRUD de entidades (Clientes, Fornecedores, Transportadoras) via AJAX e DataTables.
+ * Dependências: jQuery, DataTables, SweetAlert2 (app.js), config.js (APP_CONFIG).
+ * 
+ * Padrão: Constants > Helpers > Core functions > Init
+ */
 
-    const $root = $('#entidade-data');
-    if (!$root.length) return; // segurança
+// =============================================================================
+// 1. CONSTANTES GLOBAIS (imutáveis, maiúsculas)
+// =============================================================================
+const SELECTORS = {
+    ROOT: '#entidade-data',
+    MODAL: '#modal-entidade',
+    FORM: '#form-entidade',
+    FORM_END: '#form-endereco-adicional',
+    ID: '#entidade-id',
+    TITULO_MODAL: '#modal-entidade-label',
+    TABELA: '#tabela-entidades',
+    TABELA_END: '#tabela-enderecos-adicionais',
+    TIPO_PESSOA: '#tipo_pessoa',
+    CPF_CNPJ: '#cnpj_cpf',
+    LABEL_CPF_CNPJ: 'label[for="cnpj_cpf"]',
+    BTN_BUSCAR_CNPJ: '#btn-buscar-cnpj',
+    DEBUG_API: '#api-debug-info',
+    END_CEP: '#end_cep',
+    END_LOGRADOURO: '#end_logradouro',
+    END_NUMERO: '#end_numero',
+    END_COMPLEMENTO: '#end_complemento',
+    END_BAIRRO: '#end_bairro',
+    END_CIDADE: '#end_cidade',
+    END_UF: '#end_uf',
+    END_ADIC_ID: '#end_adic_id',
+    END_ADIC_ENTIDADE_ID: '#end_adic_entidade_id',
+    BTN_SALVAR_END: '#btn-salvar-endereco',
+    BTN_CANCELAR_END: '#btn-cancelar-endereco',
+    TAB_ENDERECO: '#endereco-adicional-tab'
+};
 
-    const BASE_URL = $root.data('baseUrl');
-    const CSRF_TOKEN = $root.data('csrfToken');
-    const ROUTE_LISTAR = BASE_URL + '/entidades/listar';
-    const ROUTE_SALVAR = BASE_URL + '/entidades/salvar';
-    const ROUTE_GET = BASE_URL + '/entidades/getEntidade';
-    const ROUTE_DELETAR = BASE_URL + '/entidades/deletar';
-    const ROUTE_API_BUSCA = BASE_URL + '/entidades/api-busca';
-    const ROUTE_END_LISTAR = BASE_URL + '/entidades/enderecos/listar';
-    const ROUTE_END_SALVAR = BASE_URL + '/entidades/enderecos/salvar';
-    const ROUTE_END_GET = BASE_URL + '/entidades/enderecos/get';
-    const ROUTE_END_DELETAR = BASE_URL + '/entidades/enderecos/deletar';
+// =============================================================================
+// 2. VARIÁVEIS GLOBAIS (mutáveis)
+// =============================================================================
+let tableEntidades, tableEnderecos;
 
+// =============================================================================
+// 3. EVENT LISTENERS E INICIALIZAÇÃO
+// =============================================================================
+document.addEventListener('app:config-ready', () => {
+    if (!window.APP_CONFIG) {
+        console.error('APP_CONFIG não carregado. Inclua config.js antes.');
+        return;
+    }
 
-    //const csrfToken = $('input[name="csrf_token"]').val(); // Pega do formulário
-    const csrfToken = $root.data('csrfToken'); // Pega do formulário
-    const $modalEntidade = $('#modal-entidade'); // ID correto do modal na View
-    const $formEntidade = $('#form-entidade');
-    const $formEndereco = $('#form-endereco-adicional');
+    const { BASE_URL, CSRF_TOKEN } = window.APP_CONFIG;
 
-    // SELETORES SINCRONIZADOS COM O HTML (lista_entidades.php)
-    const $tipoPessoaSelect = $('#tipo_pessoa'); // Agora é um select, não radio
-    const $cpfCnpjInput = $('#cnpj_cpf'); // ID: cnpj_cpf
-    const $labelCpfCnpj = $('label[for="cnpj_cpf"]');
-    const $btnBuscarCnpj = $('#btn-buscar-cnpj');
-    const $debugApiInfo = $('#api-debug-info');
+    // ==================================================================
+    // 3.1 DEFINIÇÃO DAS ROTAS
+    // ==================================================================
+    const ROUTES = {
+        LISTAR: `${BASE_URL}/entidades/listar`,
+        GET: `${BASE_URL}/entidades/getEntidade`,
+        SALVAR: `${BASE_URL}/entidades/salvar`,
+        DELETAR: `${BASE_URL}/entidades/deletar`,
+        API_BUSCA: `${BASE_URL}/entidades/api-busca`,
+        NEXT_CODE: `${BASE_URL}/entidades/proximo-codigo`,
+        END_LISTAR: `${BASE_URL}/entidades/enderecos/listar`,
+        END_SALVAR: `${BASE_URL}/entidades/enderecos/salvar`,
+        END_GET: `${BASE_URL}/entidades/enderecos/get`,
+        END_DELETAR: `${BASE_URL}/entidades/enderecos/deletar`
+    };
 
-    // Botões de endereço
-    const $btnBuscarCepAdicional = $('#btn-buscar-cep-adic');
-
-    let tableEntidades, tableEnderecos;
-
-    // =================================================================
-    // 1. LÓGICA DE MÁSCARAS E CAMPOS
-    // =================================================================
-
+    // =============================================================================
+    // 3.2 FUNÇÕES AUXILIARES
+    // =============================================================================
     function updatePessoaFields() {
-        const tipo = $tipoPessoaSelect.val(); // 'Fisica' ou 'Juridica'
+        const tipo = $(SELECTORS.TIPO_PESSOA).val();
+        const $input = $(SELECTORS.CPF_CNPJ);
+        const $label = $(SELECTORS.LABEL_CPF_CNPJ);
+        const $btnBuscar = $(SELECTORS.BTN_BUSCAR_CNPJ);
 
-        $cpfCnpjInput.unmask();
+        $input.unmask();
 
         if (tipo === 'Juridica') {
-            $labelCpfCnpj.text('CNPJ (*)');
-            $cpfCnpjInput.attr('placeholder', '00.000.000/0000-00');
-            $cpfCnpjInput.mask('00.000.000/0000-00');
-            $btnBuscarCnpj.show(); // Mostra busca
+            $label.text('CNPJ (*)');
+            $input.attr('placeholder', '00.000.000/0000-00').mask('00.000.000/0000-00');
+            $btnBuscar.show();
         } else {
-            $labelCpfCnpj.text('CPF (*)');
-            $cpfCnpjInput.attr('placeholder', '000.000.000-00');
-            $cpfCnpjInput.mask('000.000.000-00');
-            $btnBuscarCnpj.hide(); // Esconde busca para CPF
+            $label.text('CPF (*)');
+            $input.attr('placeholder', '000.000.000-00').mask('000.000.000-00');
+            $btnBuscar.hide();
         }
     }
 
-    function carregarEntidadeParaEdicao(id) {
-        $.post(ROUTE_GET, { entidade_id: id, csrf_token: CSRF_TOKEN })
-            .done(function (res) {
-                let data = typeof res === 'string' ? JSON.parse(res) : res;
-                if (data.success && data.data) {
-                    preencherModalComDados(data.data); // Sua função existente de edição
-                    $('#modal-entidade-label').text('Editar Entidade');
-                    $modalEntidade.modal('show');
-                }
-            });
+    function preencherModalEntidade(d) {
+        $('#codigo_interno').val(d.codigo_interno ? d.codigo_interno.toString().padStart(4, '0') : '');
+        $(SELECTORS.ID).val(d.id || '');
+        $(SELECTORS.TIPO_PESSOA).val(d.tipo_pessoa).trigger('change');
+        $('#situacao').val(d.situacao);
+        $(SELECTORS.CPF_CNPJ).val(d.cnpj_cpf).trigger('input');
+        $('#inscricao_estadual_rg').val(d.inscricao_estadual_rg || '');
+        $('#razao_social').val(d.razao_social || '');
+        $('#nome_fantasia').val(d.nome_fantasia || '');
+
+        // Endereço principal
+        $(SELECTORS.END_CEP).val(d.end_cep || '').trigger('input');
+        $(SELECTORS.END_LOGRADOURO).val(d.end_logradouro || '');
+        $(SELECTORS.END_NUMERO).val(d.end_numero || '');
+        $(SELECTORS.END_COMPLEMENTO).val(d.end_complemento || '');
+        $(SELECTORS.END_BAIRRO).val(d.end_bairro || '');
+        $(SELECTORS.END_CIDADE).val(d.end_cidade || '');
+        $(SELECTORS.END_UF).val(d.end_uf || '');
+
+        $(SELECTORS.TITULO_MODAL).text('Editar: ' + (d.razao_social || 'Entidade'));
+        $(SELECTORS.TAB_ENDERECO).removeClass('disabled');
+        $(SELECTORS.END_ADIC_ENTIDADE_ID).val(d.id);
+
+        if (tableEnderecos) tableEnderecos.ajax.reload();
     }
 
-    // Inicializa máscaras
-    updatePessoaFields();
-    $tipoPessoaSelect.on('change', updatePessoaFields);
+    function resetModalEntidade(isCreate = true) {
+        $(SELECTORS.FORM)[0].reset();
+        $(SELECTORS.ID).val('');
+        $(SELECTORS.TITULO_MODAL).text(isCreate ? 'Adicionar Novo' : 'Editar Entidade');
+        $(SELECTORS.TAB_ENDERECO).addClass('disabled');
+        $('#situacao').val('Ativo');
+        $(SELECTORS.TIPO_PESSOA).val('Fisica').trigger('change');
+        updatePessoaFields();
+    }
 
-    // =================================================================
-    // 2. BUSCA DE API (CNPJ)
-    // =================================================================
-
-    $btnBuscarCnpj.on('click', function () {
-        const cnpj = $cpfCnpjInput.val();
-        const feedback = $debugApiInfo;
-
-        feedback.text('Consultando API...').removeClass('text-danger text-success');
-        $(this).prop('disabled', true);
-
-        $.ajax({
-            url: ROUTE_API_BUSCA, // Rota do Controller
-            type: 'POST',
-            data: { termo: cnpj, tipo: 'cnpj' },
-            dataType: 'json'
-        }).done(function (response) {
-            if (response.success) {
-                const d = response.data;
-
-                // Preenche campos principais (IDs corrigidos conforme HTML)
-                $('#razao_social').val(d.razao_social);
-                $('#nome_fantasia').val(d.nome_fantasia);
-                $('#inscricao_estadual_rg').val(d.inscricao_estadual);
-
-                // Preenche Endereço Principal
-                $('#end_cep').val(d.cep).trigger('input'); // Trigger para máscara funcionar
-                $('#end_logradouro').val(d.logradouro);
-                $('#end_numero').val(d.numero);
-                $('#end_complemento').val(d.complemento);
-                $('#end_bairro').val(d.bairro);
-                $('#end_cidade').val(d.cidade);
-                $('#end_uf').val(d.uf);
-
-                feedback.text('Sucesso: ' + d.api_origem).addClass('text-success');
-            } else {
-                feedback.text('Erro: ' + response.message).addClass('text-danger');
-            }
-        }).fail(function () {
-            feedback.text('Erro de comunicação com o servidor.').addClass('text-danger');
-        }).always(function () {
-            $btnBuscarCnpj.prop('disabled', false);
-        });
-    });
-
-    // =================================================================
-    // 3. DATATABLES (LISTAGEM)
-    // =================================================================
-
-    tableEntidades = $('#tabela-entidades').DataTable({
-        "serverSide": true,
-        "processing": true,
-        "ajax": {
-            "url": ROUTE_LISTAR,
-            "type": "POST",
-            "data": function (d) {
-                d.tipo_entidade = pageType;
-                d.csrf_token = csrfToken;
-            }
-        },
-        "responsive": true,
-        "order": [[2, "asc"]], // Ordena por Razão Social
-        "columns": [
-            {
-                "data": "situacao",
-                "className": "text-center",
-                "render": data => (data === 'Ativo')
-                    ? '<span class="badge bg-success">Ativo</span>'
-                    : '<span class="badge bg-danger">Inativo</span>'
+    // =============================================================================
+    // 3.3 FUNÇÕES PRINCIPAIS
+    // =============================================================================
+    function initDataTableEntidades() {
+        tableEntidades = $(SELECTORS.TABELA).DataTable({
+            serverSide: true,
+            processing: true,
+            ajax: {
+                url: ROUTES.LISTAR,
+                type: 'POST',
+                data: d => { d.csrf_token = CSRF_TOKEN; d.tipo_entidade = $('#ent_tipo').val(); }
             },
-            {
-                "data": "tipo",
-                "className": "text-center aling-middle",
-            }, // Cliente/Fornecedor/Transportadora
-            {
-                "data": "codigo_interno",
-                "render": function (data) {
-                    //Se tiver dado, formata com 4 dígitos (ex: 15 -> 0015)
-                    //se for nulo, retorna vazio
-                    return data ? data.toString().padStart(4, '0') : '';
-                },
-                "className": "text-center align-middle",
-            },
-            {
-                "data": "razao_social",
-                "className": "align-middle"
-            },
-            {
-                "data": "nome_fantasia",
-                "className": "align-middle"
-            },
-            {
-                "data": "cnpj_cpf",
-                "className": "text-center align-middle",
-            },
-            {
-                "data": "id",
-                "orderable": false,
-                "className": "text-center align-middle",
-                "render": function (data) {
-                    return `
-                        <button class="btn btn-warning btn-sm btn-editar-entidade me-1" data-id="${data}">
+            responsive: true,
+            order: [[2, "asc"]],
+            columns: [
+                { data: "situacao", className: "text-center", render: d => d === 'Ativo' ? '<span class="badge bg-success">Ativo</span>' : '<span class="badge bg-danger">Inativo</span>' },
+                { data: "tipo", className: "text-center" },
+                { data: "codigo_interno", className: "text-center", render: d => d ? d.toString().padStart(4, '0') : '' },
+                { data: "razao_social" },
+                { data: "nome_fantasia" },
+                { data: "cnpj_cpf", className: "text-center" },
+                {
+                    data: "id", orderable: false, className: "text-center",
+                    render: id => `
+                        <button class="btn btn-warning btn-sm btn-editar-entidade me-1" data-id="${id}">
                             <i class="fas fa-pencil-alt"></i>
                         </button>
-                        <button class="btn btn-danger btn-sm btn-inativar-entidade" data-id="${data}">
+                        <button class="btn btn-danger btn-sm btn-inativar-entidade" data-id="${id}">
                             <i class="fas fa-ban"></i>
-                        </button>
-                    `;
+                        </button>`
                 }
+            ],
+            language: window.DataTablesPtBr
+        });
+    }
+
+    function initDataTableEnderecos() {
+        tableEnderecos = $(SELECTORS.TABELA_END).DataTable({
+            processing: true,
+            serverSide: false,
+            ajax: {
+                url: ROUTES.END_LISTAR,
+                type: 'POST',
+                data: d => {
+                    d.entidade_id = $(SELECTORS.END_ADIC_ENTIDADE_ID).val();
+                    d.csrf_token = CSRF_TOKEN;
+                }
+            },
+            paging: false, lengthChange: false, searching: false, info: false, ordering: false,
+            columns: [
+                { data: "tipo_endereco" },
+                { data: null, render: d => `${d.logradouro}, ${d.numero} ${d.complemento ? '- ' + d.complemento : ''}` },
+                { data: null, render: d => `${d.bairro}, ${d.cidade}/${d.uf}` },
+                {
+                    data: "id",
+                    className: "text-center",
+                    render: function (id, type, row) {
+                        // Botão Editar (sempre aparece)
+                        let btnEdit = `
+            <button class="btn btn-sm btn-info btn-editar-endereco" data-id="${id}" title="Editar">
+                <i class="fas fa-pencil-alt"></i>
+            </button>`;
+
+                        // Botão Excluir (só aparece se NÃO for Principal)
+                        let btnDelete = '';
+                        if (row.tipo_endereco !== 'Principal') {
+                            btnDelete = `
+                <button class="btn btn-sm btn-danger btn-deletar-endereco ms-1" data-id="${id}" title="Excluir">
+                    <i class="fas fa-trash"></i>
+                </button>`;
+                        }
+
+                        return btnEdit + btnDelete;
+                    }
+                }
+            ],
+            language: window.DataTablesPtBr
+        });
+    }
+
+    async function loadEntidade(id) {
+        try {
+            const response = await apiPost(ROUTES.GET, { ent_codigo: id, csrf_token: CSRF_TOKEN });
+            if (response.success && response.data) {
+                preencherModalEntidade(response.data);
+                $(SELECTORS.MODAL).modal('show');
+            } else {
+                msgErro(response.message || 'Erro ao carregar dados.');
             }
-        ],
-        "language": window.DataTablesPtBr
-    });
+        } catch (error) {
+            console.error(error);
+            msgErro('Erro de comunicação com o servidor.');
+        }
+    }
 
-    // =================================================================
-    // 4. CRUD (SALVAR / EDITAR / EXCLUIR)
-    // =================================================================
+    async function submitEntidade(e) {
+        e.preventDefault();
+        const $btn = $(SELECTORS.FORM).find('button[type="submit"]');
+        const original = $btn.html();
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Salvando...');
 
-    // SUBMIT DO FORMULÁRIO (SALVAR)
-    $formEntidade.on('submit', function (e) {
-        e.preventDefault(); // Impede o reload da página
+        try {
+            const formData = new FormData($(SELECTORS.FORM)[0]);
+            formData.append('csrf_token', CSRF_TOKEN);
 
-        const formData = new FormData(this);
-        // Adiciona a ação manualmente pois o ajax_router precisa saber
-        const url = ROUTE_SALVAR;
-
-        $.ajax({
-            url: url,
-            type: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            dataType: 'json'
-        }).done(function (response) {
-            // Se o PHP retornou HTML ou erro (raramente), tenta parsear
-            if (typeof response === 'string') {
-                try { response = JSON.parse(response); } catch (e) { }
-            }
+            const response = await apiPost(ROUTES.SALVAR, formData, true);
 
             if (response.success) {
-                $modalEntidade.modal('hide');
+                $(SELECTORS.MODAL).modal('hide');
                 tableEntidades.ajax.reload(null, false);
-                msgSucesso(response.message || 'Salvo com sucesso!');
-                return;
+                msgSucesso(response.message);
+            } else {
+                msgErro(response.message || 'Falha ao salvar.');
             }
+        } catch (error) {
+            console.error(error);
+            msgErro('Erro de comunicação ao salvar.');
+        } finally {
+            $btn.prop('disabled', false).html(original);
+        }
+    }
 
-            // === TRATAMENTO INTELIGENTE DE ERROS ===
-            if (response.error_type === 'duplicado' && response.entidade_id) {
-                const nome = response.message.split('esse ')[1] || 'registro';
-
-                Swal.fire({
-                    title: 'Cadastro já existe!',
-                    text: `${response.message} Deseja abrir para edição?`,
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonText: 'Sim, editar',
-                    cancelButtonText: 'Não, cancelar',
-                    reverseButtons: true
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        // Abre o modal e carrega os dados da entidade existente
-                        carregarEntidadeParaEdicao(response.entidade_id);
-                    }
-                });
-            }
-            else if (response.message) {
+    async function submitEnderecoAdicional(e) {
+        e.preventDefault();
+        try {
+            const response = await apiPost(ROUTES.END_SALVAR, $(SELECTORS.FORM_END).serialize());
+            if (response.success) {
+                const idEntidade = $(SELECTORS.END_ADIC_ENTIDADE_ID).val();
+                $(SELECTORS.FORM_END)[0].reset();
+                $(SELECTORS.END_ADIC_ENTIDADE_ID).val(idEntidade);
+                $(SELECTORS.END_ADIC_ID).val('');
+                $(SELECTORS.BTN_SALVAR_END)
+                    .removeClass('btn-warning')
+                    .addClass('btn-success')
+                    .html('<i class="fas fa-plus"></i> Adicionar');
+                $(SELECTORS.BTN_CANCELAR_END).hide();
+                tableEnderecos.ajax.reload(null, false);
+                Toast.fire({ icon: 'success', title: response.message });
+            } else {
                 msgErro(response.message);
             }
-            else {
-                msgErro('Ocorreu um erro ao salvar. Verifique os dados e tente novamente.');
-            }
-        })
-            .fail(function (jqXHR, textStatus, errorThrown) {
-                console.error('AJAX Error:', jqXHR.responseText);
-                msgErro('Erro de comunicação com o servidor. Verifique sua conexão.');
-            });
+        } catch (error) {
+            console.error(error);
+            msgErro('Erro ao salvar endereço.');
+        }
+    }
 
-    });
+    async function deleteEndereco(id) {
+        const result = await confirmarExclusao('Remover endereço?', 'Essa ação não pode ser desfeita.');
+        if (!result.isConfirmed) return;
 
-    // =================================================================
-    // 5. DATATABLES (ENDEREÇOS ADICIONAIS)
-    // =================================================================
-    tableEnderecos = $('#tabela-enderecos-adicionais').DataTable({
-        "processing": true,
-        "serverSide": false, // Não precisa ser server-side para poucos endereços
-        "ajax": {
-            "url": ROUTE_END_LISTAR,
-            "type": "POST",
-            "data": function (d) {
-                // Envia o ID da entidade que está no input hidden
-                d.entidade_id = $('#end_adic_entidade_id').val();
-            }
-        },
-        "paging": false,            //Remove paginação (Anterio/Próximo)
-        "lengthChange": false,      //Remove "Exibir X Registros"
-        "searching": false,         //Remove barra de pesquisa
-        "info": false,              //Remove "Mostrando 0 de 0"
-        "ordering": false,          //Remove setas de ordenação
-        "columns": [
-            { "data": "tipo_endereco" },
-            {
-                "data": null,
-                "render": function (data) {
-                    return `${data.logradouro}, ${data.numero} ${data.complemento ? '- ' + data.complemento : ''}`;
-                }
-            },
-            {
-                "data": null,
-                "render": function (data) {
-                    return `${data.bairro}, ${data.cidade}/${data.uf}`;
-                }
-            },
-            {
-                "data": "id",
-                "className": "text-center",
-                "render": function (data, type, row) {
-
-                    // Botão Editar (Sempre ativo)
-                    let btnEdit = `
-                    <button class="btn btn-sm btn-info btn-editar-endereco" data-id="${data}" title="Editar">
-                        <i class="fas fa-pencil-alt"></i>
-                    </button>`;
-
-                    // Botão Excluir (Só aparece se NÃO for Principal)
-                    let btnDelete = '';
-                    if (row.tipo_endereco !== 'Principal') {
-                        btnDelete = `
-                        <button class="btn btn-sm btn-danger btn-deletar-endereco ms-1" data-id="${data}" title="Excluir">
-                            <i class="fas fa-trash"></i>
-                        </button>`;
-                    }
-
-                    return btnEdit + btnDelete;
-                }
-            }
-        ],
-        "language": window.DataTablesPtBr
-    });
-
-    // =================================================================
-    // 6. AÇÕES DE ENDEREÇO (EDITAR / EXCLUIR / LIMPAR)
-    // =================================================================
-
-    // BOTAO EDITAR (Carrega dados no form pequeno)
-    $('#tabela-enderecos-adicionais').on('click', '.btn-editar-endereco', function () {
-        const id = $(this).data('id');
-        const $btn = $(this);
-
-        // Feedback visual
-        $btn.html('<i class="fas fa-spinner fa-spin"></i>');
-
-        $.ajax({
-            url: ROUTE_END_GET, // Rota: /entidades/enderecos/get
-            type: 'POST',
-            data: { end_id: id }, // Envia o ID do endereço
-            dataType: 'json'
-        }).done(function (response) {
+        try {
+            const response = await apiPost(ROUTES.END_DELETAR, { end_id: id, csrf_token: CSRF_TOKEN });
             if (response.success) {
-                const d = response.data;
-
-
-                // Preenche o formulário da aba 2
-                $('#end_adic_id').val(d.id); // ID do endereço
-                $('#end_adic_tipo').val(d.tipo_endereco).trigger('change');
-                $('#end_adic_cep').val(d.cep).trigger('input');
-                $('#end_adic_logradouro').val(d.logradouro);
-                $('#end_adic_numero').val(d.numero);
-                $('#end_adic_complemento').val(d.complemento);
-                $('#end_adic_bairro').val(d.bairro);
-                $('#end_adic_cidade').val(d.cidade);
-                $('#end_adic_uf').val(d.uf);
-
-                // Muda botão Salvar para "Atualizar" (Amarelo)
-                $('#btn-salvar-endereco')
-                    .removeClass('btn-success')
-                    .addClass('btn-warning')
-                    .html('<i class="fas fa-sync"></i> Atualizar');
-
-                // MOSTRA o botão Cancelar
-                $('#btn-cancelar-endereco').show();
-
-                // Rola suavemente até o formulário (útil em telas pequenas)
-                $('#form-endereco-adicional')[0].scrollIntoView({ behavior: 'smooth' });
-
+                Toast.fire({ icon: 'success', title: 'Endereço removido.' });
+                tableEnderecos.ajax.reload(null, false);
             } else {
-                msgErro(response.message || 'Dados não encontrados.');
+                msgErro(response.message);
             }
-        }).always(function () {
-            $btn.html('<i class="fas fa-pencil-alt"></i>');
-        });
+        } catch (error) {
+            console.error(error);
+            msgErro('Erro ao excluir endereço.');
+        }
+    }
+
+    // =============================================================================
+    // 3.4 INICIALIZAÇÃO FINAL
+    // =============================================================================
+    if (!document.querySelector(SELECTORS.ROOT)) return;
+
+    // Máscaras
+    $(SELECTORS.END_CEP + ', #end_adic_cep').mask('00000-000');
+    updatePessoaFields();
+    $(SELECTORS.TIPO_PESSOA).on('change', updatePessoaFields);
+
+    // Eventos
+    $(SELECTORS.FORM).on('submit', submitEntidade);
+    $(SELECTORS.FORM_END).on('submit', submitEnderecoAdicional);
+
+    $(SELECTORS.TABELA).on('click', '.btn-editar-entidade', function () {
+        resetModalEntidade(false);
+        loadEntidade($(this).data('id'));
     });
 
-    // BOTÃO EDITAR
-    $('#tabela-entidades').on('click', '.btn-editar-entidade', function () {
-        const id = $(this).data('id');
-        const $btn = $(this);
-
-        // Feedback visual
-        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
-
-        $.ajax({
-            url: ROUTE_GET,
-            type: 'POST',
-            data: {
-                ent_codigo: id,
-                csrf_token: csrfToken
-            },
-            dataType: 'json'
-        })
-            .done(function (response) {
-                if (response.success && response.data) {
-                    const d = response.data;
-
-                    // Formata o código para 4 dígitos antes de jogar no input
-                    let codFormatado = d.codigo_interno ? d.codigo_interno.toString().padStart(4, '0') : '';
-
-                    // === PREENCHE TODOS OS CAMPOS CORRETAMENTE ===
-                    $('#codigo_interno').val(codFormatado);
-                    $('#entidade-id').val(d.id || '');
-                    $('#tipo_pessoa').val(d.tipo_pessoa).trigger('change');
-                    $('#situacao').val(d.situacao);
-                    $('#cnpj_cpf').val(d.cnpj_cpf).trigger('input');
-                    $('#inscricao_estadual_rg').val(d.inscricao_estadual_rg || '');
-                    $('#razao_social').val(d.razao_social || '');
-                    $('#nome_fantasia').val(d.nome_fantasia || '');
-                    //  $('#codigo_interno').val(d.codigo_interno || '');
-
-                    let codigoFormatado = d.codigo_interno ? d.codigo_interno.toString().padStart(4, '0') : '';
-                    $('#codigo_interno').val(codigoFormatado);
-
-                    // === ENDEREÇO PRINCIPAL (agora preenche!) ===
-                    $('#end_cep').val(d.end_cep || '').trigger('input');
-                    $('#end_logradouro').val(d.end_logradouro || '');
-                    $('#end_numero').val(d.end_numero || '');
-                    $('#end_complemento').val(d.end_complemento || '');
-                    $('#end_bairro').val(d.end_bairro || '');
-                    $('#end_cidade').val(d.end_cidade || '');
-                    $('#end_uf').val(d.end_uf || '');
-
-                    // Título do modal
-                    $('#modal-entidade-label').text('Editar: ' + (d.razao_social || 'Entidade'));
-
-                    // Habilita aba de endereços adicionais
-                    $('#endereco-adicional-tab').removeClass('disabled');
-
-                    // Define o ID da entidade no form de endereços (IMPORTANTÍSSIMO)
-                    $('#end_adic_entidade_id').val(d.id);
-
-                    // Recarrega a tabela de endereços filtrando por esse ID
-                    if (tableEnderecos) {
-                        tableEnderecos.ajax.reload();
-                    }
-
-                    // Abre o modal
-                    $modalEntidade.modal('show');
-                } else {
-                    alert(response.message || 'Dados não encontrados.');
-                }
-            })
-            .fail(function (jqXHR) {
-                console.error('Erro AJAX:', jqXHR.responseText);
-                msgErro('Erro ao carregar dados. Verifique o console.');
-            })
-            .always(function () {
-                $btn.prop('disabled', false).html('<i class="fas fa-pencil-alt"></i>');
-            });
+    $(SELECTORS.TABELA_END).on('click', '.btn-editar-endereco', function () {
+        loadEndereco($(this).data('id')); // você pode criar função loadEndereco similar ao loadEntidade
     });
 
-    // BOTÃO ADICIONAR (LIMPAR)
-    $modalEntidade.on('show.bs.modal', function (event) {
-        const $trigger = $(event.relatedTarget); // Elemento que disparou o modal
+    $(SELECTORS.TABELA_END).on('click', '.btn-deletar-endereco', function () {
+        deleteEndereco($(this).data('id'));
+    });
 
-        // Se foi aberto pelo botão adicionar (não editar)
+    $(SELECTORS.MODAL).on('show.bs.modal', function (event) {
+        const $trigger = $(event.relatedTarget);
         if ($trigger.length > 0 && !$trigger.hasClass('btn-editar-entidade')) {
-
-            // 1. Reseta o formulário
-            $formEntidade[0].reset();
-            $('#entidade-id').val(''); //Limpa o ID
-            $('#modal-entidade-label').text('Adicionar Novo');
-            $('#endereco-adicional-tab').addClass('disabled'); // Bloqueia endereços até salvar
-
-            //Reseta selects e máscaras
-            $('#tipo-pessoa').val('Fisica').trigger('change');
-            $('#situacao').val('Ativo');
-
-            updatePessoaFields(); //Reaplica regras visuais
-
-            // 2. BUSCA O PRÓXIMO CÓDIGO AUTOMATICAMENTE
-            const ROUTE_NEXT_CODE = BASE_URL + '/entidades/proximo-codigo';
-
-            // Coloca um feedback visual ("...")
+            resetModalEntidade(true);
             $('#codigo_interno').val('...').prop('readonly', true);
-
-            $.getJSON(ROUTE_NEXT_CODE, function (response) {
-                if (response.success) {
-                    // Preenche: "0016"
-                    $('#codigo_interno').val(response.code);
-                } else {
-                    $('#codigo_interno').val('');
-                }
-                // Libera o campo caso o usuário queira mudar manualmente
+            $.getJSON(ROUTES.NEXT_CODE, function (response) {
+                $('#codigo_interno').val(response.success ? response.code : '');
                 $('#codigo_interno').prop('readonly', false);
             });
         }
     });
 
-    // BOTAO EXCLUIR ENDEREÇO
-    $('#tabela-enderecos-adicionais').on('click', '.btn-deletar-endereco', function () {
-        const id = $(this).data('id');
-
-        confirmarExclusao('Remover endereço?', 'Essa ação não pode ser desfeita.')
-            .then((result) => {
-                if (result.isConfirmed) {
-                    $.ajax({
-                        url: ROUTE_END_DELETAR,
-                        type: 'POST',
-                        data: { end_id: id },
-                        dataType: 'json'
-                    }).done(function (response) {
-                        if (response.success) {
-                            Toast.fire({ icon: 'success', title: 'Endereço removido.' });
-                            tableEnderecos.ajax.reload(null, false);
-                        } else {
-                            msgErro(response.message);
-                        }
-                    });
-                }
-            });
-    });
-
-    // AÇÃO: CANCELAR EDIÇÃO DE ENDEREÇO
-    $('#btn-cancelar-endereco').on('click', function () {
-        // 1. Salva o ID da Entidade Pai (para não perder)
-        const parentId = $('#end_adic_entidade_id').val();
-
-        // 2. Reseta o formulário
-        $formEndereco[0].reset();
-
-        // 3. Restaura os IDs corretos
-        $('#end_adic_entidade_id').val(parentId); // Devolve o ID do Pai
-        $('#end_adic_id').val(''); // Limpa o ID do endereço (Volta a ser Insert)
-
-        // 4. Restaura o visual do botão Salvar
-        $('#btn-salvar-endereco')
-            .removeClass('btn-warning')
-            .addClass('btn-success')
-            .html('<i class="fas fa-plus"></i> Adicionar');
-
-        // 5. Esconde o botão Cancelar
-        $(this).hide();
-    });
-
-    // SUBMIT DO FORMULÁRIO (SALVAR ENDEREÇO ADICIONAL)
-    $formEndereco.on('submit', function (e) {
-        e.preventDefault();
-
-        $.ajax({
-            url: ROUTE_END_SALVAR,
-            type: 'POST',
-            data: $(this).serialize(),
-            dataType: 'json'
-        }).done(function (response) {
-            if (response.success) {
-                // 1.Limpa o form de endereço, mas MANTÉM o ID da entidade
-                const idEntidade = $('#end_adic_entidade_id').val();
-
-                // 2.Reseta o form completo
-                $formEndereco[0].reset();
-
-                // 3. Restaura o ID do Pai e LIMPA o ID do Endereço (para virar insert de novo)
-                $('#end_adic_entidade_id').val(idEntidade);
-                $('#end_adic_id').val('');
-
-                // 4. Volta botão Salvar para "Adicionar" (Verde)
-                $('#btn-salvar-endereco')
-                    .removeClass('btn-warning')
-                    .addClass('btn-success')
-                    .html('<i class="fas fa-plus"></i> Adicionar');
-
-                // ESCONDE o botão Cancelar
-                $('#btn-cancelar-endereco').hide();
-
-                // Recarrega a tabela
-                tableEnderecos.ajax.reload(null, false);
-
-                Toast.fire({ icon: 'success', title: response.message });
-            } else {
-                msgErro(response.message);
-            }
-        });
-    });
-
-    // MÁSCARAS DE CEP
-    $('#end_cep, #end_adic_cep').mask('00000-000');
-
-    // BUSCA DE CEP ENDEREÇO PRINCIPAL (Via AJAX Router)
-    $('#end_cep').on('blur', function () {
-        const cep = $(this).val().replace(/\D/g, '');
-        if (cep.length === 8) {
-            $.post(ROUTE_END_GET, { termo: cep, tipo: 'cep' }, function (res) {
-                const r = JSON.parse(res);
-                if (r.success) {
-                    const d = r.data;
-                    $('#end_logradouro').val(d.logradouro);
-                    $('#end_bairro').val(d.bairro);
-                    $('#end_cidade').val(d.cidade);
-                    $('#end_uf').val(d.uf);
-                    $('#end_numero').focus();
-                }
-            });
-        }
-    });
+    // Inicializa tabelas
+    if ($(SELECTORS.TABELA).length > 0) initDataTableEntidades();
+    if ($(SELECTORS.TABELA_END).length > 0) initDataTableEnderecos();
 });

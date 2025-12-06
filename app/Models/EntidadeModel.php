@@ -16,12 +16,12 @@ class EntidadeModel
 {
     protected PDO $pdo;
     protected AuditLoggerService $logger;
-    protected string $table = 'ENTIDADES';
-    protected string $tableEnd = 'ENDERECOS';
+    protected string $table = 'entidades';
+    protected string $tableEnd = 'enderecos';
 
     public function __construct()
     {
-        $this->pdo = Database::getInstance()->getConnection();
+        $this->pdo = Database::getConnection();
         $this->logger = new AuditLoggerService();
     }
 
@@ -30,10 +30,10 @@ class EntidadeModel
      */
     public function findAllForDataTable(array $params): array
     {
-        $start = (int)($params['start'] ?? 0);
-        $length = (int)($params['length'] ?? 10);
+        $start       = (int)($params['start'] ?? 0);
+        $length      = (int)($params['length'] ?? 10);
         $searchValue = $params['search']['value'] ?? '';
-        $tipo = $params['tipo_entidade'] ?? 'cliente';
+        $tipo        = $params['tipo_entidade'] ?? 'cliente';
 
         $columnsMap = [
             0 => 'ent.situacao',
@@ -45,13 +45,13 @@ class EntidadeModel
             6 => 'ent.id'
         ];
 
-        $where = "WHERE 1=1 ";
+        $where      = "WHERE 1=1 ";
         $bindParams = [];
 
         if (!empty($tipo)) {
             $tipoDb = ucfirst($tipo);
-            if ($tipoDb === 'Fornecedor' || $tipoDb === 'Cliente') {
-                $where .= "AND (tipo = :tipoExact OR tipo = 'Cliente e Fornecedor') ";
+            if (in_array($tipoDb, ['Fornecedor', 'Cliente'])) {
+                $where .= "AND tipo = :tipoExact ";
                 $bindParams[':tipoExact'] = $tipoDb;
             } else {
                 $where .= "AND tipo = :tipo ";
@@ -60,7 +60,10 @@ class EntidadeModel
         }
 
         if (!empty($searchValue)) {
-            $where .= "AND (razao_social LIKE :s1 OR nome_fantasia LIKE :s2 OR cnpj_cpf LIKE :s3 OR codigo_interno LIKE :s4) ";
+            $where .= "AND (razao_social LIKE :s1 
+                            OR nome_fantasia LIKE :s2 
+                            OR cnpj_cpf LIKE :s3 
+                            OR codigo_interno LIKE :s4) ";
             $term = "%{$searchValue}%";
             $bindParams[':s1'] = $term;
             $bindParams[':s2'] = $term;
@@ -77,19 +80,22 @@ class EntidadeModel
             }
         }
 
-        $totalRecords = $this->pdo->query("SELECT COUNT(id) FROM {$this->table}")->fetchColumn();
+        $totalRecords = (int)$this->pdo->query("SELECT COUNT(id) FROM {$this->table}")->fetchColumn();
 
-        $sqlFiltered = "SELECT COUNT(ent.id) FROM {$this->table} ent {$where}";
+        $sqlFiltered  = "SELECT COUNT(ent.id) FROM {$this->table} ent {$where}";
         $stmtFiltered = $this->pdo->prepare($sqlFiltered);
         $stmtFiltered->execute($bindParams);
-        $totalFiltered = $stmtFiltered->fetchColumn();
+        $totalFiltered = (int)$stmtFiltered->fetchColumn();
 
         $sqlData = "SELECT 
-                        ent.id, ent.situacao, ent.tipo, ent.razao_social, ent.nome_fantasia, ent.cnpj_cpf, ent.codigo_interno,
+                        ent.id, ent.situacao, ent.tipo, ent.razao_social, 
+                        ent.nome_fantasia, ent.cnpj_cpf, ent.codigo_interno, 
                         end.logradouro, end.numero, end.cidade, end.uf
                     FROM {$this->table} ent
-                    LEFT JOIN {$this->tableEnd} end ON ent.id = end.entidade_id AND end.tipo_endereco = 'Principal'
-                    {$where} {$orderBy} LIMIT :start, :length";
+                    LEFT JOIN {$this->tableEnd} end 
+                        ON ent.id = end.entidade_id 
+                        AND end.tipo_endereco = 'Principal'
+                        {$where} {$orderBy} LIMIT :start, :length";
 
         $stmt = $this->pdo->prepare($sqlData);
         foreach ($bindParams as $k => $v) $stmt->bindValue($k, $v);
@@ -107,19 +113,23 @@ class EntidadeModel
         }
 
         return [
-            "draw" => (int)($params['draw'] ?? 1),
-            "recordsTotal" => (int)$totalRecords,
-            "recordsFiltered" => (int)$totalFiltered,
-            "data" => $data
+            "draw"            => (int)($params['draw'] ?? 1),
+            "recordsTotal"    => $totalRecords,
+            "recordsFiltered" => $totalFiltered,
+            "data"            => $data
         ];
     }
 
+    /**
+     * Cria uma nova entidade.
+     */
     public function create(array $data, int $userId): int
     {
         $this->pdo->beginTransaction();
         try {
             $sql = "INSERT INTO {$this->table} 
-                    (tipo, tipo_pessoa, razao_social, nome_fantasia, codigo_interno, cnpj_cpf, inscricao_estadual_rg, situacao)
+                    (tipo, tipo_pessoa, razao_social, nome_fantasia, 
+                    codigo_interno, cnpj_cpf, inscricao_estadual_rg, situacao)
                     VALUES (:tipo, :tipo_pessoa, :razao, :nome_fan, :codigo, :doc, :ie, :sit)";
 
             $stmt = $this->pdo->prepare($sql);
@@ -129,7 +139,7 @@ class EntidadeModel
                 ':razao'       => $data['razao_social'],
                 ':nome_fan'    => $data['nome_fantasia'] ?? null,
                 ':codigo'      => $data['codigo_interno'] ?? null,
-                ':doc'         => $data['cnpj_cpf'],
+                ':doc'         => preg_replace('/\D/', '', $data['cnpj_cpf'] ?? ''), // sanitiza CNPJ/CPF
                 ':ie'          => $data['inscricao_estadual_rg'] ?? null,
                 ':sit'         => $data['situacao'] ?? 'Ativo'
             ]);
@@ -140,15 +150,26 @@ class EntidadeModel
                 $this->saveAddress($id, $data['endereco_principal']);
             }
 
-            $this->logger->log('CREATE', $this->table, $id, null, $data, $userId);
+            $this->logger->log(
+                'CREATE',
+                $this->table,
+                $id,
+                null,
+                $data,
+                $userId
+            );
             $this->pdo->commit();
             return $id;
         } catch (PDOException $e) {
             $this->pdo->rollBack();
+            error_log("Erro ao criar entidade: " . $e->getMessage());
             throw $e;
         }
     }
 
+    /**
+     * Atualiza uma entidade existente.
+     */
     public function update(int $id, array $data, int $userId): bool
     {
         $this->pdo->beginTransaction();
@@ -163,14 +184,14 @@ class EntidadeModel
 
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute([
-                ':tipo'        => $data['tipo'],
-                ':tipo_pessoa' => $data['tipo_pessoa'],
-                ':razao'       => $data['razao_social'],
-                ':nome_fan'    => $data['nome_fantasia'] ?? null,
-                ':codigo'      => $data['codigo_interno'] ?? null,
-                ':doc'         => $data['cnpj_cpf'],
-                ':ie'          => $data['inscricao_estadual_rg'] ?? null,
-                ':sit'         => $data['situacao'],
+                ':tipo'        => $data['tipo'] ?? $dadosAntigos['tipo'],
+                ':tipo_pessoa' => $data['tipo_pessoa'] ?? $dadosAntigos['tipo_pessoa'],
+                ':razao'       => $data['razao_social'] ?? $dadosAntigos['razao_social'],
+                ':nome_fan'    => $data['nome_fantasia'] ?? $dadosAntigos['nome_fantasia'],
+                ':codigo'      => $data['codigo_interno'] ?? $dadosAntigos['codigo_interno'],
+                ':doc'         => preg_replace('/\D/', '', $data['cnpj_cpf'] ?? $dadosAntigos['cnpj_cpf']),
+                ':ie'          => $data['inscricao_estadual_rg'] ?? $dadosAntigos['inscricao_estadual_rg'],
+                ':sit'         => $data['situacao'] ?? $dadosAntigos['situacao'],
                 ':id'          => $id
             ]);
 
@@ -178,12 +199,79 @@ class EntidadeModel
                 $this->saveAddress($id, $data['endereco_principal']);
             }
 
-            $this->logger->log('UPDATE', $this->table, $id, $dadosAntigos, $data, $userId);
+            $this->logger->log(
+                'UPDATE',
+                $this->table,
+                $id,
+                $dadosAntigos,
+                $data,
+                $userId
+            );
             $this->pdo->commit();
+
             return true;
-        } catch (PDOException $e) {
+        } catch (\Throwable $e) {
             $this->pdo->rollBack();
+            error_log("Erro ao atualizar entidade {$id}: " . $e->getMessage());
             throw $e;
+        }
+    }
+
+    public function delete(int $id, int $userId): bool
+    {
+        $this->pdo->beginTransaction();
+
+        try {
+            $dadosAntigos = $this->find($id);
+
+            if (!$dadosAntigos) {
+                // Se não encontrou, não há o que deletar
+                $this->pdo->rollBack();
+                return false;
+            }
+
+            $stmt = $this->pdo->prepare("DELETE FROM {$this->table} WHERE id = :id");
+            $success = $stmt->execute([':id' => $id]);
+
+            if ($success) {
+                $this->logger->log(
+                    'DELETE',
+                    $this->table,
+                    $id,
+                    $dadosAntigos,
+                    null,
+                    $userId
+                );
+            }
+
+            $this->pdo->commit();
+            return $success;
+        } catch (\Throwable $e) {
+            $this->pdo->rollBack();
+            error_log("Erro ao deletar entidade {$id}: " . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    public function find(int $id)
+    {
+        try {
+            $sql = "SELECT ent.*,
+                       end.cep as end_cep, end.logradouro as end_logradouro, end.numero as end_numero,
+                       end.complemento as end_complemento, end.bairro as end_bairro, 
+                       end.cidade as end_cidade, end.uf as end_uf
+                FROM {$this->table} ent
+                LEFT JOIN {$this->tableEnd} end ON ent.id = end.entidade_id AND end.tipo_endereco = 'Principal'
+                WHERE ent.id = :id";
+
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([':id' => $id]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            return $result ?: null;
+        } catch (\Throwable $e) {
+            error_log("Erro ao buscar entidade {$id}: " . $e->getMessage());
+            return null;
         }
     }
 
@@ -192,422 +280,401 @@ class EntidadeModel
      */
     private function saveAddress(int $entidadeId, array $end): void
     {
-        $check = $this->pdo->prepare("SELECT id FROM {$this->tableEnd} WHERE entidade_id = ? AND tipo_endereco = 'Principal'");
-        $check->execute([$entidadeId]);
-        $endId = $check->fetchColumn();
-
-        $params = [
-            $end['cep'],
-            $end['logradouro'],
-            $end['numero'],
-            $end['complemento'] ?? null,
-            $end['bairro'],
-            $end['cidade'],
-            $end['uf']
-        ];
-
-        if ($endId) {
-            $sql = "UPDATE {$this->tableEnd} SET cep=?, logradouro=?, numero=?, complemento=?, bairro=?, cidade=?, uf=? WHERE id=?";
-            $params[] = $endId;
-        } else {
-            $sql = "INSERT INTO {$this->tableEnd} (entidade_id, tipo_endereco, cep, logradouro, numero, complemento, bairro, cidade, uf) 
-                    VALUES (?, 'Principal', ?, ?, ?, ?, ?, ?, ?)";
-            array_unshift($params, $entidadeId);
-        }
-
-        $this->pdo->prepare($sql)->execute($params);
-    }
-
-    public function delete(int $id, int $userId): bool
-    {
-        $this->pdo->beginTransaction();
         try {
-            $dadosAntigos = $this->find($id);
-            $stmt = $this->pdo->prepare("DELETE FROM {$this->table} WHERE id = ?");
-            $success = $stmt->execute([$id]);
+            $check = $this->pdo->prepare("SELECT id FROM {$this->tableEnd} WHERE entidade_id = :id AND tipo_endereco = 'Principal'");
+            $check->execute([':id' => $entidadeId]);
+            $endId = $check->fetchColumn();
 
-            if ($success) {
-                $this->logger->log('DELETE', $this->table, $id, $dadosAntigos, null, $userId);
+            $params = [
+                ':cep'        => $end['cep'] ?? null,
+                ':logradouro' => $end['logradouro'] ?? null,
+                ':numero'     => $end['numero'] ?? null,
+                ':complemento' => $end['complemento'] ?? null,
+                ':bairro'     => $end['bairro'] ?? null,
+                ':cidade'     => $end['cidade'] ?? null,
+                ':uf'         => $end['uf'] ?? null,
+            ];
+
+            if ($endId) {
+                $sql = "UPDATE {$this->tableEnd} 
+                    SET cep=:cep, logradouro=:logradouro, numero=:numero, complemento=:complemento, 
+                        bairro=:bairro, cidade=:cidade, uf=:uf 
+                    WHERE id=:id";
+                $params[':id'] = $endId;
+            } else {
+                $sql = "INSERT INTO {$this->tableEnd} 
+                    (entidade_id, tipo_endereco, cep, logradouro, numero, complemento, bairro, cidade, uf) 
+                    VALUES (:entidadeId, 'Principal', :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :uf)";
+                $params[':entidadeId'] = $entidadeId;
             }
 
-            $this->pdo->commit();
-            return $success;
-        } catch (PDOException $e) {
-            $this->pdo->rollBack();
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+        } catch (\Throwable $e) {
+            error_log("Erro ao salvar endereço principal da entidade {$entidadeId}: " . $e->getMessage());
             throw $e;
         }
     }
 
-    public function find(int $id)
-    {
-        $sql = "SELECT ent.*,
-                       end.cep as end_cep, end.logradouro as end_logradouro, end.numero as end_numero,
-                       end.complemento as end_complemento, end.bairro as end_bairro, 
-                       end.cidade as end_cidade, end.uf as end_uf
-                FROM {$this->table} ent
-                LEFT JOIN {$this->tableEnd} end ON ent.id = end.entidade_id AND end.tipo_endereco = 'Principal'
-                WHERE ent.id = :id";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':id' => $id]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
-    }
 
     /**
-     * Busca todos os endereços de uma entidade (exceto o Principal, que está no FIND).
-     * @param int $entidadeId O ID da entidade.
-     * @return array Lista de endereços.
+     * Busca todos os endereços adicionais de uma entidade.
      */
     public function getEnderecosAdicionais(int $entidadeId): array
     {
-        $sql = "SELECT id, tipo_endereco, cep, logradouro, numero, complemento, bairro, cidade, uf 
+        try {
+            $sql = "SELECT id, tipo_endereco, cep, logradouro, numero, complemento, bairro, cidade, uf 
                 FROM {$this->tableEnd} 
-                WHERE entidade_id = :id 
-                ORDER BY FIELD (tipo_endereco, 'Principal') DESC, tipo_endereco ASC";
+                WHERE entidade_id = :id AND tipo_endereco <> 'Principal'
+                ORDER BY tipo_endereco ASC";
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':id' => $entidadeId]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([':id' => $entidadeId]);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable $e) {
+            error_log("Erro ao buscar endereços adicionais da entidade {$entidadeId}: " . $e->getMessage());
+            return [];
+        }
     }
 
     /**
-     * Cria um novo endereço para uma entidade existente (Usado para Endereços Adicionais).
-     * @param int $entidadeId O ID da entidade.
-     * @param array $endereco Dados do endereço.
-     * @return int|false O ID do novo endereço ou false.
+     * Cria um novo endereço adicional.
      */
-    public function createEnderecoAdicional(int $entidadeId, array $endereco)
+    public function createEnderecoAdicional(int $entidadeId, array $endereco): ?int
     {
         try {
-            $sqlEndereco = "INSERT INTO {$this->tableEnd} 
+            $sql = "INSERT INTO {$this->tableEnd} 
                 (entidade_id, tipo_endereco, cep, logradouro, numero, complemento, bairro, cidade, uf)
                 VALUES (:entidadeId, :tipoEndereco, :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :uf)";
 
-            $stmtEndereco = $this->pdo->prepare($sqlEndereco);
-            $stmtEndereco->execute([
-                $entidadeId,
-                $endereco['tipo_endereco'],
-                $endereco['cep'],
-                $endereco['logradouro'],
-                $endereco['numero'],
-                $endereco['complemento'] ?? null,
-                $endereco['bairro'],
-                $endereco['cidade'],
-                $endereco['uf']
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([
+                ':entidadeId'   => $entidadeId,
+                ':tipoEndereco' => $endereco['tipo_endereco'] ?? 'Adicional',
+                ':cep'          => $endereco['cep'] ?? null,
+                ':logradouro'   => $endereco['logradouro'] ?? null,
+                ':numero'       => $endereco['numero'] ?? null,
+                ':complemento'  => $endereco['complemento'] ?? null,
+                ':bairro'       => $endereco['bairro'] ?? null,
+                ':cidade'       => $endereco['cidade'] ?? null,
+                ':uf'           => $endereco['uf'] ?? null,
             ]);
 
-            return $this->pdo->lastInsertId();
-        } catch (PDOException $e) {
-            // Logar o erro
-            return false;
+            return (int)$this->pdo->lastInsertId();
+        } catch (\Throwable $e) {
+            error_log("Erro ao criar endereço adicional da entidade {$entidadeId}: " . $e->getMessage());
+            return null;
         }
     }
 
     /**
      * Busca um endereço adicional pelo ID.
-     * @param int $id O ID do registro de ENDERECOS.
-     * @return array|false Dados do endereço.
      */
-    public function findEnderecoAdicional(int $id)
+    public function findEnderecoAdicional(int $id): ?array
     {
-        $sql = "SELECT id, tipo_endereco, cep, logradouro, numero, complemento, bairro, cidade, uf 
+        try {
+            $sql = "SELECT id, tipo_endereco, cep, logradouro, numero, complemento, bairro, cidade, uf 
                 FROM {$this->tableEnd} 
                 WHERE id = :id";
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':id' => $id]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([':id' => $id]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            return $result ?: null;
+        } catch (\Throwable $e) {
+            error_log("Erro ao buscar endereço adicional {$id}: " . $e->getMessage());
+            return null;
+        }
     }
 
     /**
      * Atualiza um endereço adicional existente.
-     * @param int $id O ID do registro de ENDERECOS.
-     * @param array $endereco Dados do endereço a serem atualizados.
-     * @return bool Sucesso ou falha.
      */
-    public function updateEnderecoAdicional(int $id, array $endereco)
+    public function updateEnderecoAdicional(int $id, array $endereco): bool
     {
-        $sql = "UPDATE {$this->tableEnd} SET 
-                tipo_endereco = :tipoEndereco, 
-                cep = :cep, 
-                logradouro = :logradouro, 
-                numero = :numero, 
-                complemento = :complemento, 
-                bairro = :bairro, 
-                cidade = :cidade, 
-                uf = :uf
-            WHERE id = :id";
+        try {
+            $sql = "UPDATE {$this->tableEnd} SET 
+                    tipo_endereco = :tipoEndereco, 
+                    cep = :cep, 
+                    logradouro = :logradouro, 
+                    numero = :numero, 
+                    complemento = :complemento, 
+                    bairro = :bairro, 
+                    cidade = :cidade, 
+                    uf = :uf
+                WHERE id = :id";
 
-        $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute([
-            $endereco['tipo_endereco'],
-            $endereco['cep'],
-            $endereco['logradouro'],
-            $endereco['numero'],
-            $endereco['complemento'] ?? null,
-            $endereco['bairro'],
-            $endereco['cidade'],
-            $endereco['uf'],
-            $id
-        ]);
+            $stmt = $this->pdo->prepare($sql);
+            return $stmt->execute([
+                ':tipoEndereco' => $endereco['tipo_endereco'] ?? null,
+                ':cep'          => $endereco['cep'] ?? null,
+                ':logradouro'   => $endereco['logradouro'] ?? null,
+                ':numero'       => $endereco['numero'] ?? null,
+                ':complemento'  => $endereco['complemento'] ?? null,
+                ':bairro'       => $endereco['bairro'] ?? null,
+                ':cidade'       => $endereco['cidade'] ?? null,
+                ':uf'           => $endereco['uf'] ?? null,
+                ':id'           => $id
+            ]);
+        } catch (\Throwable $e) {
+            error_log("Erro ao atualizar endereço adicional {$id}: " . $e->getMessage());
+            return false;
+        }
     }
 
     /**
      * Deleta um endereço adicional.
-     * @param int $id O ID do registro de ENDERECOS.
-     * @return bool Sucesso ou falha.
      */
-    public function deleteEnderecoAdicional(int $id)
+    public function deleteEnderecoAdicional(int $id): bool
     {
-        $sql = "DELETE FROM {$this->tableEnd} WHERE id = ?";
-        $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute([$id]);
+        try {
+            $sql = "DELETE FROM {$this->tableEnd} WHERE id = :id";
+            $stmt = $this->pdo->prepare($sql);
+            return $stmt->execute([':id' => $id]);
+        } catch (\Throwable $e) {
+            error_log("Erro ao deletar endereço adicional {$id}: " . $e->getMessage());
+            return false;
+        }
     }
 
     /**
      * Busca Entidades ativas para Select2 (Proprietários).
-     * @param string $term Termo de busca (CNPJ/Nome).
-     * @return array Lista de entidades [id, text].
      */
     public function getEntidadesOptions(string $term = ''): array
     {
-        $sql = "SELECT 
-                    id, 
-                    razao_social, 
-                    nome_fantasia
+        try {
+            $sql = "SELECT id, razao_social, nome_fantasia
                 FROM {$this->table} 
                 WHERE situacao = 'Ativo'";
 
-        $params = [];
+            $params = [];
 
-        if (!empty($term)) {
-            $sql .= " AND (razao_social LIKE :term OR nome_fantasia LIKE :term OR cnpj_cpf LIKE :term)";
-            $params[':term'] = '%' . $term . '%';
+            if (!empty($term)) {
+                $sql .= " AND (razao_social LIKE :term OR nome_fantasia LIKE :term OR cnpj_cpf LIKE :term)";
+                $params[':term'] = '%' . $term . '%';
+            }
+
+            $sql .= " ORDER BY razao_social ASC LIMIT 50";
+
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+
+            $results = [];
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $name = $row['nome_fantasia'] ?: $row['razao_social'];
+                $results[] = [
+                    'id'   => $row['id'],
+                    'text' => $name
+                ];
+            }
+
+            return $results;
+        } catch (\Throwable $e) {
+            error_log("Erro ao buscar entidades para Select2: " . $e->getMessage());
+            return [];
         }
-
-        $sql .= " ORDER BY razao_social ASC LIMIT 50";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
-
-        $results = [];
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $name = $row['nome_fantasia'] ?: $row['razao_social'];
-            $results[] = [
-                'id' => $row['id'],
-                'text' => $name
-            ];
-        }
-        return $results;
     }
 
     /**
-     * Busca APENAS Clientes ativos para Select2 .
-     * @param string $term Termo de busca (CNPJ/Nome).
-     * @return array Lista formatada.
+     * Busca APENAS Clientes ativos para Select2.
      */
     public function getClienteOptions(string $term = ''): array
     {
-        // Query base: Filtra Ativos E (Tipo Cliente)
-        $sql = "SELECT 
-                    id, razao_social, nome_fantasia, cnpj_cpf
+        try {
+            $sql = "SELECT id, razao_social, nome_fantasia, cnpj_cpf
                 FROM {$this->table} 
                 WHERE situacao = 'Ativo'
-                AND tipo = 'Cliente'";
+                  AND tipo = 'Cliente'";
 
-        $params = [];
+            $params = [];
 
-        if (!empty($term)) {
-            // Remove caracteres não numéricos caso o usuário cole um CNPJ formatado
-            $termLike = '%' . $term . '%';
+            if (!empty($term)) {
+                $termLike  = '%' . $term . '%';
+                $termClean = preg_replace('/\D/', '', $term);
 
-            // Início do grupo OR
-            $whereClause = "(razao_social LIKE :p1 OR nome_fantasia LIKE :p2";
-            $params[':p1'] = $termLike;
-            $params[':p2'] = $termLike;
+                $whereClause = "(razao_social LIKE :p1 OR nome_fantasia LIKE :p2";
+                $params[':p1'] = $termLike;
+                $params[':p2'] = $termLike;
 
-            // Só adiciona busca por CNPJ se tiver números na pesquisa
-            $termClean = preg_replace('/\D/', '', $term);
-            if (!empty($termClean)) {
-                $whereClause .= " OR cnpj_cpf LIKE :p3";
-                $params[':p3'] = '%' . $termClean . '%';
+                if (!empty($termClean)) {
+                    $whereClause .= " OR cnpj_cpf LIKE :p3";
+                    $params[':p3'] = '%' . $termClean . '%';
+                }
+
+                $whereClause .= ")";
+                $sql .= " AND " . $whereClause;
             }
 
-            $whereClause .= ")"; // Fecha o grupo OR
-            $sql .= " AND " . $whereClause;
-        }
+            $sql .= " ORDER BY nome_fantasia ASC LIMIT 30";
 
-        // Ordena por Nome Fantasia (geralmente como chamamos os postos)
-        $sql .= " ORDER BY nome_fantasia ASC LIMIT 30";
-
-        try {
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute($params);
 
             $results = [];
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $name = $row['nome_fantasia'] ?: $row['razao_social'];
-                $doc = $row['cnpj_cpf'];
+                $doc  = $row['cnpj_cpf'];
 
-                // Formatação visual do CNPJ
-                $displayText = $name;
-                if ($doc) {
-                    if (strlen($doc) === 14) {
-                        $docMask = preg_replace("/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/", "\$1.\$2.\$3/\$4-\$5", $doc);
-                        $displayText .= " ({$docMask})";
-                    } else {
-                        $displayText .= " ({$doc})";
-                    }
+                // Usa helper para formatação de documento
+                if (function_exists('format_documento') && $doc) {
+                    $doc = format_documento($doc);
                 }
-                $results[] = ['id' => $row['id'], 'text' => $displayText];
+
+                $displayText = $doc ? "{$name} ({$doc})" : $name;
+
+                $results[] = [
+                    'id'   => $row['id'],
+                    'text' => $displayText
+                ];
             }
+
             return $results;
-        } catch (PDOException $e) {
+        } catch (\Throwable $e) {
+            error_log("Erro ao buscar clientes para Select2: " . $e->getMessage());
             return [];
         }
     }
 
     /**
-     * Busca APENAS Fornecedores ativos para Select2
-     * @param string $term Termo de busca (CNPJ/Nome)
-     * @return array Lista formatada
+     * Busca APENAS Fornecedores ativos para Select2.
      */
     public function getFornecedoresOptions(string $term = ''): array
     {
-        $sql = "SELECT 
-                    id, razao_social, nome_fantasia, cnpj_cpf
+        try {
+            $sql = "SELECT id, razao_social, nome_fantasia, cnpj_cpf
                 FROM {$this->table} 
                 WHERE situacao = 'Ativo'
-                AND tipo = 'Fornecedor'";
+                  AND tipo = 'Fornecedor'";
 
-        $params = [];
+            $params = [];
 
-        if (!empty($term)) {
-            // Remove caracteres não numéricos caso o usuário cole um CNPJ formatado
-            $termLike = '%' . $term . '%';
+            if (!empty($term)) {
+                $termLike  = '%' . $term . '%';
+                $termClean = preg_replace('/\D/', '', $term);
 
-            // Início do grupo OR
-            $whereClause = "(razao_social LIKE :p1 OR nome_fantasia LIKE :p2";
-            $params[':p1'] = $termLike;
-            $params[':p2'] = $termLike;
+                $whereClause = "(razao_social LIKE :p1 OR nome_fantasia LIKE :p2";
+                $params[':p1'] = $termLike;
+                $params[':p2'] = $termLike;
 
-            // Só adiciona busca por CNPJ se tiver números na pesquisa
-            $termClean = preg_replace('/\D/', '', $term);
-            if (!empty($termClean)) {
-                $whereClause .= " OR cnpj_cpf LIKE :p3";
-                $params[':p3'] = '%' . $termClean . '%';
+                if (!empty($termClean)) {
+                    $whereClause .= " OR cnpj_cpf LIKE :p3";
+                    $params[':p3'] = '%' . $termClean . '%';
+                }
+
+                $whereClause .= ")";
+                $sql .= " AND " . $whereClause;
             }
 
-            $whereClause .= ")"; // Fecha o grupo OR
-            $sql .= " AND " . $whereClause;
-        }
+            $sql .= " ORDER BY nome_fantasia ASC LIMIT 30";
 
-        $sql .= " ORDER BY nome_fantasia ASC LIMIT 30";
-
-        try {
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute($params);
 
             $results = [];
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $name = $row['nome_fantasia'] ?: $row['razao_social'];
-                $doc = $row['cnpj_cpf'];
+                $doc  = $row['cnpj_cpf'];
 
-                // Formatação visual do CNPJ
-                $displayText = $name;
-                if ($doc) {
-                    if (strlen($doc) === 14) {
-                        $docMask = preg_replace("/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/", "\$1.\$2.\$3/\$4-\$5", $doc);
-                        $displayText .= " ({$docMask})";
-                    } else {
-                        $displayText .= " ({$doc})";
-                    }
+                if (function_exists('format_documento') && $doc) {
+                    $doc = format_documento($doc);
                 }
-                $results[] = ['id' => $row['id'], 'text' => $displayText];
+
+                $displayText = $doc ? "{$name} ({$doc})" : $name;
+                $results[]   = ['id' => $row['id'], 'text' => $displayText];
             }
+
             return $results;
-        } catch (PDOException $e) {
+        } catch (\Throwable $e) {
+            error_log("Erro ao buscar fornecedores para Select2: " . $e->getMessage());
+            return [];
+        }
+    }
+
+
+    /**
+     * Busca APENAS Transportadoras ativas para Select2.
+     */
+    public function getTransportadorasOptions(string $term = ''): array
+    {
+        try {
+            $sql = "SELECT id, razao_social, nome_fantasia, cnpj_cpf
+                FROM {$this->table} 
+                WHERE situacao = 'Ativo'
+                  AND tipo = 'Transportadora'";
+
+            $params = [];
+
+            if (!empty($term)) {
+                $termLike  = '%' . $term . '%';
+                $termClean = preg_replace('/\D/', '', $term);
+
+                $sql .= " AND (razao_social LIKE :term OR nome_fantasia LIKE :term OR cnpj_cpf LIKE :term OR cnpj_cpf LIKE :termClean)";
+                $params[':term']      = $termLike;
+                $params[':termClean'] = '%' . $termClean . '%';
+            }
+
+            $sql .= " ORDER BY nome_fantasia ASC LIMIT 30";
+
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+
+            $results = [];
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $name = $row['nome_fantasia'] ?: $row['razao_social'];
+                $doc  = $row['cnpj_cpf'];
+
+                if (function_exists('format_documento') && $doc) {
+                    $doc = format_documento($doc);
+                }
+
+                $displayText = $doc ? "{$name} ({$doc})" : $name;
+                $results[]   = ['id' => $row['id'], 'text' => $displayText];
+            }
+
+            return $results;
+        } catch (\Throwable $e) {
+            error_log("Erro ao buscar transportadoras para Select2: " . $e->getMessage());
             return [];
         }
     }
 
     /**
-     * Busca APENAS Fornecedores ativos para Select2 (Transportadoras).
-     * @param string $term Termo de busca (CNPJ/Nome).
-     * @return array Lista formatada.
+     * Busca entidade por documento ou código interno.
      */
-    public function getTransportadorasOptions(string $term = ''): array
+    public function findByDocumentOrCode(string $valor): ?array
     {
-        // Query base: Filtra Ativos E Tipo Transportadoras
-        $sql = "SELECT 
-                    id, 
-                    razao_social, 
-                    nome_fantasia,
-                    cnpj_cpf
+        try {
+            $sql = "SELECT id, razao_social, nome_fantasia 
                 FROM {$this->table} 
-                WHERE situacao = 'Ativo'
-                AND tipo = 'Transportadora'"; //Filtro Específico
+                WHERE cnpj_cpf = :valor OR codigo_interno = :valor 
+                LIMIT 1";
 
-        $params = [];
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([':valor' => preg_replace('/\D/', '', $valor)]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!empty($term)) {
-            // Remove caracteres não numéricos caso o usuário cole um CNPJ formatado
-            $termClean = preg_replace('/\D/', '', $term);
-
-            $sql .= " AND (razao_social LIKE :term OR nome_fantasia LIKE :term OR cnpj_cpf LIKE :term OR cnpj_cpf LIKE :termClean)";
-            $params[':term'] = '%' . $term . '%';
-            $params[':termClean'] = '%' . $termClean . '%';
+            return $result ?: null;
+        } catch (\Throwable $e) {
+            error_log("Erro ao buscar entidade por documento/código: " . $e->getMessage());
+            return null;
         }
-
-        // Ordena por Nome Fantasia (geralmente como chamamos os postos)
-        $sql .= " ORDER BY nome_fantasia ASC LIMIT 30";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
-
-        $results = [];
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $name = $row['nome_fantasia'] ?: $row['razao_social'];
-
-            // Formatação do CNPJ para exibição visual 
-            $doc = $row['cnpj_cpf'];
-
-            // Formatação visual"
-            $displayText = $name;
-            if ($doc) {
-                // Aplica máscara visual rápida se for CNPJ (14 dígitos)
-                if (strlen($doc) === 14) {
-                    $docMask = preg_replace("/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/", "\$1.\$2.\$3/\$4-\$5", $doc);
-                    $displayText .= " ({$docMask})";
-                } else {
-                    $displayText .= " ({$doc})";
-                }
-            }
-
-            $results[] = [
-                'id' => $row['id'],
-                'text' => $displayText
-            ];
-        }
-        return $results;
     }
 
-    public function findByDocumentOrCode($valor)
-    {
-        $sql = "SELECT id, razao_social, nome_fantasia FROM ENTIDADES 
-            WHERE cnpj_cpf = :valor OR codigo_interno = :valor LIMIT 1";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':valor' => preg_replace('/\D/', '', $valor)]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
-    }
-
+    /**
+     * Retorna o próximo código interno sequencial.
+     */
     public function getNextCodigoInterno(): int
     {
-        // Como agora é INT, não precisa mais de CAST
-        $sql = "SELECT MAX(codigo_interno) as max_code FROM {$this->table}";
-        $stmt = $this->pdo->query($sql);
-        $max = $stmt->fetchColumn();
+        try {
+            $sql  = "SELECT MAX(codigo_interno) as max_code FROM {$this->table}";
+            $stmt = $this->pdo->query($sql);
+            $max  = $stmt->fetchColumn();
 
-        return $max ? (int)$max + 1 : 1;
+            return $max ? (int)$max + 1 : 1;
+        } catch (\Throwable $e) {
+            error_log("Erro ao calcular próximo código interno: " . $e->getMessage());
+            return 1;
+        }
     }
 }

@@ -33,7 +33,7 @@ class FuncionarioController extends BaseController
         // VERIFICAÇÃO DE PERMISSÃO (ACL/RBAC)
         if (!PermissaoService::checarPermissao($cargo, 'Funcionarios', 'Ler')) {
             http_response_code(403);
-            die("Acesso Negado: Você não tem permissão para visualizar o Cadastro de Funcionários.");
+            exit("Acesso Negado: Você não tem permissão para visualizar o Cadastro de Funcionários.");
         }
 
         $data = [
@@ -257,6 +257,6 @@ class FuncionarioController extends BaseController
     {
         // Implementa geração de token e salvar em $_SESSION
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-        return $_SESSION['csrf_token']; 
+        return $_SESSION['csrf_token'];
     }
 }

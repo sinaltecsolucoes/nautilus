@@ -67,27 +67,40 @@ class FuncionarioModel
     {
         $start = (int)$params['start'];
         $length = (int)$params['length'];
-        $search = $params['search'] ?? '';
+        //$search = $params['search'] ?? '';
+        // Trata se search vier como array ou string
+        $search = is_array($params['search']) ? ($params['search']['value'] ?? '') : ($params['search'] ?? '');
+
 
         $where = "WHERE 1=1 ";
-        $binds = [];
+        $bindParams = [];
 
         if (!empty($search)) {
-            $where .= "AND (nome_completo LIKE :s OR nome_comum LIKE :s OR email LIKE :s OR tipo_cargo LIKE :s) ";
-            $binds[':s'] = "%{$search}%";
+            $searchTerm = "%$search%";
+
+            $where .= "AND (
+            nome_completo LIKE :s1 OR 
+            nome_comum LIKE :s2 OR 
+            email LIKE :s3 OR 
+            tipo_cargo LIKE :s4) ";
+
+            $bindParams[':s1'] = $searchTerm;
+            $bindParams[':s2'] = $searchTerm;
+            $bindParams[':s3'] = $searchTerm;
+            $bindParams[':s4'] = $searchTerm;
         }
 
         $totalRecords = (int)$this->pdo->query("SELECT COUNT(id) FROM {$this->table}")->fetchColumn();
 
         $stmtF = $this->pdo->prepare("SELECT COUNT(id) FROM {$this->table} {$where}");
-        $stmtF->execute($binds);
+        $stmtF->execute($bindParams);
         $totalFiltered = $stmtF->fetchColumn();
 
         $sql = "SELECT id, nome_completo, nome_comum, email, tipo_cargo, situacao 
                 FROM {$this->table} {$where} ORDER BY nome_completo ASC LIMIT :start, :length";
 
         $stmt = $this->pdo->prepare($sql);
-        foreach ($binds as $k => $v) {
+        foreach ($bindParams as $k => $v) {
             $stmt->bindValue($k, $v);
         }
         $stmt->bindValue(':start', $start, PDO::PARAM_INT);

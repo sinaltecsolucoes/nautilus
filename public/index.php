@@ -14,6 +14,7 @@ define('ROOT_PATH', dirname(__DIR__));
 // Carrega configuração
 $config = require ROOT_PATH . '/config/config.php';
 
+
 //Parâmetros de sessão segura
 session_set_cookie_params([
     'lifetime' => 0,
@@ -28,6 +29,9 @@ session_set_cookie_params([
 if (session_status() === PHP_SESSION_NONE) {
     session_start(); // Inicia a sessão para controle de login/usuário
 }
+
+// Define 'BASE_URL' como constante global para ser usada nas views
+define('BASE_URL', $config['app']['base_url']);
 
 // Carrega o Autoloader Manual  
 require_once ROOT_PATH . '/app/Core/Autoload.php';
@@ -81,7 +85,7 @@ $routes = [
     // Entidades (API/AJAX)
     'entidades/listar'           => ['EntidadeController', 'listarEntidades'],
     'entidades/salvar'           => ['EntidadeController', 'salvarEntidade'],
-    'entidades/getEntidade'      => ['EntidadeController', 'getEntidade'],
+    'entidades/get'              => ['EntidadeController', 'getEntidade'],
     'entidades/deletar'          => ['EntidadeController', 'deleteEntidade'],
     'entidades/api-busca'        => ['EntidadeController', 'buscarApiDados'],
     'entidades/clientes-options' => ['EntidadeController', 'getClientesOptions'],
@@ -182,8 +186,11 @@ if ($routeConfig) {
     $controllerClass = "App\\Controllers\\" . $controllerName;
 
     if (class_exists($controllerClass)) {
-        $controller = new $controllerClass();
-
+        if ($controllerName == 'AuthController') {
+            $controller = new $controllerClass(new \App\Models\FuncionarioModel());
+        } else {
+            $controller = new $controllerClass();
+        }
         if (method_exists($controller, $methodName)) {
             $controller->$methodName();
         } else {
