@@ -13,7 +13,7 @@ $cargos     = $data['cargos'] ?? [];
 <h1 class="h3 mb-4 text-gray-800"><?php echo htmlspecialchars($data['title']); ?></h1>
 
 <div id="funcionario-data"
-    data-base-url="<?php echo $config['app']['base_url']; ?>"
+    data-base-url="<?php echo BASE_URL; ?>"
     data-csrf-token="<?php echo htmlspecialchars($csrf_token); ?>"
     data-logged-in-user-id="<?php echo $_SESSION['user_id'] ?? 0; ?>"
     style="display: none;">
@@ -56,7 +56,6 @@ $cargos     = $data['cargos'] ?? [];
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-
 
                 <form id="form-funcionario" class="row g-3">
                     <input type="hidden" id="funcionario-id" name="funcionario_id">

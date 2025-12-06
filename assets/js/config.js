@@ -3,7 +3,9 @@
 // Carregado antes de qualquer módulo
 
 document.addEventListener('DOMContentLoaded', function () {
-    const root = document.querySelector('[data-base-url]');
+    const root =
+        document.querySelector('[data-csrf-token]') ||
+        document.querySelector('[data-base-url]');
     if (!root) {
         console.error('Erro crítico: data-base-url não encontrado na página.');
         return;
@@ -33,5 +35,5 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // DISPARA O EVENTO QUANDO TUDO ESTIVER PRONTO
-    document.dispatchEvent(new Event('app:config-ready')); 
+    document.dispatchEvent(new Event('app:config-ready'));
 });

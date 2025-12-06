@@ -10,7 +10,7 @@ use App\Services\EntidadeService;
 
 class EntidadeController extends BaseController
 {
-    private EntidadeModel $entidadeModel;
+    private EntidadeModel $entidadeModel; 
 
     public function __construct(?EntidadeModel $entidadeModel = null)
     {
@@ -174,12 +174,6 @@ class EntidadeController extends BaseController
         };
     }
 
-    private function generateCsrfToken()
-    {
-        // Implementa geração de token e salvar em $_SESSION
-        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-        return $_SESSION['csrf_token'];
-    }
 
     /**
      * Salva ou Atualiza uma entidade (POST).

@@ -104,4 +104,11 @@ abstract class BaseController
     {
         return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
     }
+
+    protected function generateCsrfToken()
+    {
+        // Implementa geração de token e salvar em $_SESSION
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        return $_SESSION['csrf_token'];
+    }
 }

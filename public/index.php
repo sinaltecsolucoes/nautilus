@@ -66,8 +66,9 @@ if (empty($route)) {
 // Mapeamento das rotas para [NomeDaClasse, NomeDoMetodo]
 $routes = [
     // Autenticação
-    'login'     => ['AuthController', 'handleLogin', true],
-    'logout'    => ['AuthController', 'logout', true],
+    'login'             => ['AuthController', 'handleLogin', true],
+    'logout'            => ['AuthController', 'logout', true],
+    'auth/refresh-csrf' => ['AuthController', 'refreshCsrf', true],
 
     // Interface Geral
     'home'      => ['DashboardController', 'showDashboard', true],

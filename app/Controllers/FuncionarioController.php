@@ -185,14 +185,14 @@ class FuncionarioController extends BaseController
         $cargo  = $_SESSION['user_cargo'] ?? 'Visitante';
 
         if (!PermissaoService::checarPermissao($cargo, 'Funcionarios', 'Ler')) {
-            http_response_code(403);
-            $this->jsonResponse(['success' => false, 'message' => 'Acesso negado.']);
-            return;
+            $this->jsonResponse(
+                ['success' => false, 'message' => 'Acesso negado.'],
+                403
+            );
         }
 
         if (!$id) {
             $this->jsonResponse(['success' => false, 'message' => 'ID inválido.']);
-            return;
         }
 
         $dados = $this->funcionarioModel->find($id);
@@ -248,15 +248,5 @@ class FuncionarioController extends BaseController
             }
             $this->jsonResponse(['success' => false, 'message' => $message]);
         }
-    }
-
-    // =================================================================
-    // AUXILIARES
-    // =================================================================
-    private function generateCsrfToken(): string
-    {
-        // Implementa geração de token e salvar em $_SESSION
-        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-        return $_SESSION['csrf_token'];
     }
 }

@@ -35,7 +35,7 @@ const SELECTORS = {
 // 2. VARIÁVEIS GLOBAIS (mutáveis, let para reatribuição se necessário)
 // =============================================================================
 
-let table; // Instância do DataTable
+let table; // Instância do DataTable 
 
 // =============================================================================
 // 3. EVENT LISTENERS E INICIALIZAÇÃO (executado no DOMContentLoaded)

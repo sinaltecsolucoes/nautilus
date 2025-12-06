@@ -82,8 +82,8 @@ async function apiPost(url, data = {}, isFormData = false) {
             // FormData não deve ter Content-Type definido manualmente
             options.body = data;
         } else {
-            options.headers["Content-Type"] = "application/json";
-            options.body = JSON.stringify(data);
+            options.headers["Content-Type"] = "application/x-www-form-urlencoded";
+            options.body = new URLSearchParams(data).toString();
         }
 
         const response = await fetch(url, options);
@@ -102,4 +102,4 @@ async function apiPost(url, data = {}, isFormData = false) {
         console.error("apiPost ERROR:", error);
         throw error;
     }
-}
+} 

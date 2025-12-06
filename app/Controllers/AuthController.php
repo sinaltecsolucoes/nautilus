@@ -156,4 +156,10 @@ class AuthController extends BaseController
         $config = require ROOT_PATH . '/config/config.php';
         return $config['app']['base_url'];
     }
+
+    public function refreshCsrf()
+    {
+        $token = $this->generateCsrfToken();
+        $this->jsonResponse(['csrf_token' => $token]);
+    }
 }

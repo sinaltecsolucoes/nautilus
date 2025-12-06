@@ -6,7 +6,7 @@
  * Descrição: Listagem e Modal de CRUD para entidades.
  * Variáveis: $data['pageType'], $data['csrf_token']
  */
-
+$csrf_token = $data['csrf_token'] ?? '';
 $pageType = $data['pageType'];
 $singular = ucfirst($pageType);
 
@@ -27,7 +27,7 @@ if (strtolower($pageType) === 'fornecedor') {
 
 <div id="entidade-data"
     data-base-url="<?php echo BASE_URL; ?>"
-    data-csrf-token="<?php echo htmlspecialchars($data['csrf_token']); ?>"
+    data-csrf-token="<?php echo htmlspecialchars($csrf_token); ?>"
     style="display: none;">
 </div>
 
@@ -67,7 +67,6 @@ if (strtolower($pageType) === 'fornecedor') {
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
 
-
             <div class="modal-body">
 
                 <ul class="nav nav-tabs" id="myTab" role="tablist">
@@ -84,7 +83,7 @@ if (strtolower($pageType) === 'fornecedor') {
                     <div class="tab-pane fade show active" id="dados" role="tabpanel" aria-labelledby="dados-tab">
                         <form id="form-entidade" class="mt-3">
                             <input type="hidden" id="entidade-id" name="ent_codigo">
-                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($data['csrf_token']); ?>">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                             <input type="hidden" name="tipo" id="ent_tipo" value="<?php echo ucfirst($pageType); ?>">
 
                             <div class="row">

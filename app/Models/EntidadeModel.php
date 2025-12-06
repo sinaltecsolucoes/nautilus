@@ -17,7 +17,7 @@ class EntidadeModel
     protected PDO $pdo;
     protected AuditLoggerService $logger;
     protected string $table = 'entidades';
-    protected string $tableEnd = 'enderecos';
+    protected string $tableEnd = 'enderecos'; 
 
     public function __construct()
     {

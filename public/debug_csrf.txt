@@ -1,0 +1,7 @@
+{
+    "POST": {
+        "ent_codigo": "39",
+        "csrf_token": "171709bda14ff44977d0b5dc7a14e4f57adcf26bb3cd230a058f1ef047cf49f8"
+    },
+    "SESSION": "171709bda14ff44977d0b5dc7a14e4f57adcf26bb3cd230a058f1ef047cf49f8"
+}

@@ -41,25 +41,29 @@ const SELECTORS = {
 // =============================================================================
 // 2. VARIÁVEIS GLOBAIS (mutáveis)
 // =============================================================================
+
 let tableEntidades, tableEnderecos;
 
 // =============================================================================
 // 3. EVENT LISTENERS E INICIALIZAÇÃO
 // =============================================================================
+
 document.addEventListener('app:config-ready', () => {
     if (!window.APP_CONFIG) {
         console.error('APP_CONFIG não carregado. Inclua config.js antes.');
         return;
-    }
+    } 
 
-    const { BASE_URL, CSRF_TOKEN } = window.APP_CONFIG;
+    const { BASE_URL } = window.APP_CONFIG;
+    const CSRF_TOKEN = document.querySelector('[data-csrf-token]').dataset.csrfToken;
 
     // ==================================================================
     // 3.1 DEFINIÇÃO DAS ROTAS
     // ==================================================================
+
     const ROUTES = {
         LISTAR: `${BASE_URL}/entidades/listar`,
-        GET: `${BASE_URL}/entidades/getEntidade`,
+        GET: `${BASE_URL}/entidades/get`,
         SALVAR: `${BASE_URL}/entidades/salvar`,
         DELETAR: `${BASE_URL}/entidades/deletar`,
         API_BUSCA: `${BASE_URL}/entidades/api-busca`,
@@ -138,7 +142,10 @@ document.addEventListener('app:config-ready', () => {
             ajax: {
                 url: ROUTES.LISTAR,
                 type: 'POST',
-                data: d => { d.csrf_token = CSRF_TOKEN; d.tipo_entidade = $('#ent_tipo').val(); }
+                data: d => {
+                    d.csrf_token = CSRF_TOKEN;
+                    d.tipo_entidade = $('#ent_tipo').val();
+                }
             },
             responsive: true,
             order: [[2, "asc"]],
@@ -187,17 +194,17 @@ document.addEventListener('app:config-ready', () => {
                     render: function (id, type, row) {
                         // Botão Editar (sempre aparece)
                         let btnEdit = `
-            <button class="btn btn-sm btn-info btn-editar-endereco" data-id="${id}" title="Editar">
-                <i class="fas fa-pencil-alt"></i>
-            </button>`;
+                            <button class="btn btn-sm btn-info btn-editar-endereco" data-id="${id}" title="Editar">
+                                <i class="fas fa-pencil-alt"></i>
+                            </button>`;
 
                         // Botão Excluir (só aparece se NÃO for Principal)
                         let btnDelete = '';
                         if (row.tipo_endereco !== 'Principal') {
                             btnDelete = `
-                <button class="btn btn-sm btn-danger btn-deletar-endereco ms-1" data-id="${id}" title="Excluir">
-                    <i class="fas fa-trash"></i>
-                </button>`;
+                                <button class="btn btn-sm btn-danger btn-deletar-endereco ms-1" data-id="${id}" title="Excluir">
+                                    <i class="fas fa-trash"></i>
+                                </button>`;
                         }
 
                         return btnEdit + btnDelete;

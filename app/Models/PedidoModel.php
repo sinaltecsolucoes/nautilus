@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-use App\Core\Database; // Assumindo que sua classe de conexão esteja aqui
+use App\Core\Database;
 use App\Services\AuditLoggerService;
 use PDO;
 use PDOException;
@@ -10,7 +10,7 @@ use PDOException;
 /**
  * Class PedidoModel
  * Gerencia a tabela de Previsões de Vendas.
- * * @package App\Models
+ * @package App\Models
  * @version 1.1.0
  */
 class PedidoModel
@@ -19,16 +19,9 @@ class PedidoModel
     // 1. PROPRIEDADES E CONSTANTES
     // =========================================================================
 
-    /** @var PDO Conexão com o banco */
     protected PDO $pdo;
-
-    /** @var AuditLoggerService Serviço de Auditoria */
     protected AuditLoggerService $logger;
-
-    /** @var string Nome da tabela principal */
     protected string $table = 'previsoes_vendas';
-
-    /** @var array Campos permitidos para mass assignment (simulação) */
     protected array $fillable = [
         'os_numero',
         'cliente_entidade_id',
@@ -45,8 +38,7 @@ class PedidoModel
 
     public function __construct()
     {
-        // Injeção de dependência manual (idealmente viria de um Container)
-        $this->pdo = Database::getInstance()->getConnection();
+        $this->pdo = Database::getConnection();
         $this->logger = new AuditLoggerService();
     }
 
@@ -71,11 +63,11 @@ class PedidoModel
     /**
      * Busca um pedido por ID com todos os relacionamentos necessários.
      * @param int $id
-     * @return array|false
      */
     public function find(int $id)
     {
-        $sql = "SELECT 
+        try {
+            $sql = "SELECT 
                     pv.*, 
                     c.nome_fantasia AS cliente_nome,
                     c.razao_social AS cliente_razao
@@ -83,9 +75,15 @@ class PedidoModel
                 LEFT JOIN ENTIDADES c ON pv.cliente_entidade_id = c.id
                 WHERE pv.id = :id";
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':id' => $id]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([':id' => $id]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            return $result ?: null;
+        } catch (\Throwable $e) {
+            error_log("Erro ao buscar Pedido {$id}: " . $e->getMessage());
+            return null;
+        }
     }
 
     /**
@@ -108,39 +106,73 @@ class PedidoModel
             );
 
             $sql = "INSERT INTO {$this->table} 
-                (os_numero, cliente_entidade_id, vendedor_funcionario_id, data_saida,
-                 quantidade, percentual_bonus, quantidade_com_bonus, valor_unitario, valor_total,
-                 forma_pagamento, condicao, salinidade, divisao, status, status_dia)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    (os_numero, 
+                    cliente_entidade_id,
+                    vendedor_funcionario_id, 
+                    data_saida,
+                    quantidade,
+                    percentual_bonus,
+                    quantidade_com_bonus, 
+                    valor_unitario, 
+                    valor_total,
+                    forma_pagamento,
+                    condicao,
+                    salinidade, 
+                    divisao, 
+                    status, 
+                    status_dia)
+                VALUES (:os, 
+                    :cliente_id,
+                    :vendedor_id, 
+                    :data_saida,
+                    :quantidade,
+                    :percentual_bonus,
+                    :quantidade_com_bonus, 
+                    :valor_unitario, 
+                    :valor_total,
+                    :forma_pagamento,
+                    :condicao,
+                    :salinidade, 
+                    :divisao, 
+                    :status, 
+                    :status_dia)";
 
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute([
-                $data['os_numero'],
-                $data['cliente_entidade_id'],
-                $data['vendedor_funcionario_id'],
-                $data['data_saida'],
-                $data['quantidade'],
-                $data['percentual_bonus'],
-                $metricas['quantidade_com_bonus'],
-                $data['valor_unitario'],
-                $metricas['valor_total'],
-                $data['forma_pagamento'],
-                $data['condicao'],
-                $data['salinidade'] ?? null,
-                $data['divisao'] ?? null,
-                $data['status'] ?? 'Confirmado',
-                $data['status_dia'] ?? null,
+                ':os'                   => $data['os_numero'],
+                ':cliente_id'           => $data['cliente_entidade_id'],
+                ':vendedor_id'          => $data['vendedor_funcionario_id'],
+                ':data_saidao'          => $data['data_saida'],
+                ':quantidade'           => $data['quantidade'],
+                ':percentual_bonus'     => $data['percentual_bonus'],
+                ':quantidade_com_bonus' => $metricas['quantidade_com_bonus'],
+                ':valor_unitario'       => $data['valor_unitario'],
+                ':valor_total'          => $metricas['valor_total'],
+                ':forma_pagamento'      => $data['forma_pagamento'],
+                ':condicao'             => $data['condicao'],
+                ':salinidade'           => $data['salinidade'] ?? null,
+                ':divisao'              => $data['divisao'] ?? null,
+                ':status'               => $data['status'] ?? 'Confirmado',
+                ':status_dia'           => $data['status_dia'] ?? null,
             ]);
 
             $id = (int)$this->pdo->lastInsertId();
 
             // Log de Auditoria
-            $this->logger->log('CREATE', $this->table, $id, null, $data, $userId);
+            $this->logger->log(
+                'CREATE',
+                $this->table,
+                $id,
+                null,
+                $data,
+                $userId
+            );
 
             $this->pdo->commit();
             return $id;
         } catch (PDOException $e) {
             $this->pdo->rollBack();
+            error_log("Erro ao criar entidade: " . $e->getMessage());
             throw $e;
         }
     }
@@ -156,13 +188,14 @@ class PedidoModel
     {
         $this->pdo->beginTransaction();
 
-        try {
-            // 1. Busca dados antigos para o Log de Auditoria
-            $dadosAntigos = $this->find($id);
+        // 1. Busca dados antigos para o Log de Auditoria
+        $dadosAntigos = $this->find($id);
 
-            if (!$dadosAntigos) {
-                throw new \Exception("Pedido não encontrado.");
-            }
+        if (!$dadosAntigos) {
+            throw new \Exception("Pedido não encontrado.");
+        }
+
+        try {
 
             // 2. Recalcula Métricas (Importante se mudou quantidade ou valor)
             $metricas = $this->calcularMetricas(
@@ -173,22 +206,13 @@ class PedidoModel
 
             // 3. Atualiza no Banco
             $sql = "UPDATE {$this->table} SET 
-                os_numero = :os,
-                cliente_entidade_id = :cliente,
-                vendedor_funcionario_id = :vendedor,
-                data_saida = :data,
-                quantidade = :qtd,
-                percentual_bonus = :perc,
-                quantidade_com_bonus = :qtd_bonus,
-                valor_unitario = :unit,
-                valor_total = :total,
-                forma_pagamento = :pgto,
-                condicao = :cond,
-                salinidade = :sal,
-                divisao = :div,
-                status = :status,
-                status_dia = :status_dia,
-                data_atualizacao = NOW()
+                os_numero = :os, cliente_entidade_id = :cliente,
+                vendedor_funcionario_id = :vendedor, data_saida = :data,
+                quantidade = :qtd, percentual_bonus = :perc,
+                quantidade_com_bonus = :qtd_bonus, valor_unitario = :unit,
+                valor_total = :total, forma_pagamento = :pgto,
+                condicao = :cond,salinidade = :sal, divisao = :div, status = :status,
+                status_dia = :status_dia, data_atualizacao = NOW()
                 WHERE id = :id";
 
             $stmt = $this->pdo->prepare($sql);
@@ -212,12 +236,21 @@ class PedidoModel
             ]);
 
             // 4. Log de Auditoria (UPDATE)
-            $this->logger->log('UPDATE', $this->table, $id, $dadosAntigos, $data, $userId);
+            $this->logger->log(
+                'UPDATE',
+                $this->table,
+                $id,
+                $dadosAntigos,
+                $data,
+                $userId
+            );
 
             $this->pdo->commit();
+
             return true;
         } catch (\Exception $e) {
             $this->pdo->rollBack();
+            error_log("Erro ao atualizar entidade {$id}: " . $e->getMessage());
             throw $e;
         }
     }
